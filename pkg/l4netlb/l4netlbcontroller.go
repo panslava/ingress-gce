@@ -224,7 +224,14 @@ func (lc *L4NetLBController) ensureBackendLinking(port utils.ServicePort) error 
 
 // shouldProcessService returns if the given LoadBalancer service should be processed by this controller.
 func (lc *L4NetLBController) shouldProcessService(service *v1.Service, l4 *loadbalancers.L4NetLB) bool {
-	//TODO(kl52752) add implementation
+	// TODO(kl52752) add check for Legacy Service and forwarding rule
+	// TODO(panslava) add check for rbsConfig flag opt-in
+	_, err := annotations.FromService(service).GetRBSConfig()
+	if err != nil {
+		klog.Errorf("error when getting L4RBSConfig: %w", err)
+		return false
+	}
+
 	return true
 }
 

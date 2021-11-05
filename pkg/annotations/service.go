@@ -96,6 +96,7 @@ const (
 	HealthcheckResource            = "healthcheck"
 	FirewallForHealthcheckResource = "firewall-rule-for-hc"
 	AddressResource                = "address"
+	RBSConfigKey                   = "cloud.google.com/l4-rbs"
 )
 
 // NegAnnotation is the format of the annotation associated with the
@@ -352,4 +353,22 @@ func (svc *Service) getBackendConfigAnnotation() (string, bool) {
 		}
 	}
 	return "", false
+}
+
+type RBSConfig struct {
+	Enabled bool `json:"enabled"`
+}
+
+// GetRBSConfig returns RBSConfig for the service.
+func (svc *Service) GetRBSConfig() (*RBSConfig, error) {
+	val, ok := svc.v[RBSConfigKey]
+	if !ok {
+		return nil, nil
+	}
+	config := RBSConfig{}
+	if err := json.Unmarshal([]byte(val), &config); err != nil {
+		return nil, fmt.Errorf("RBSConfig annotation is invalid json: %v", err)
+	}
+
+	return &config, nil
 }

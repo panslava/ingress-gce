@@ -19,6 +19,7 @@ package annotations
 import (
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"k8s.io/api/core/v1"
@@ -625,6 +626,105 @@ func TestOnlyStatusAnnotationsChanged(t *testing.T) {
 			result := OnlyStatusAnnotationsChanged(tc.service1, tc.service2)
 			if result != tc.expectedResult {
 				t.Errorf("%s: Expected result for input %v, %v to be %v, got %v instead", tc.desc, tc.service1.Annotations, tc.service2.Annotations, tc.expectedResult, result)
+			}
+		})
+	}
+}
+
+func TestParseRBSConfig(t *testing.T) {
+	for _, tc := range []struct {
+		desc         string
+		svc          *v1.Service
+		expectConfig *RBSConfig
+		expectError  error
+	}{
+		{
+			desc: "RBS enabled",
+			svc: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
+					RBSConfigKey: `{"enabled": true}`,
+				}},
+			},
+			expectConfig: &RBSConfig{
+				Enabled: true,
+			},
+			expectError: nil,
+		},
+		{
+			desc: "RBS explicitly disabled",
+			svc: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
+					RBSConfigKey: `{"enabled": false}`,
+				}},
+			},
+			expectConfig: &RBSConfig{
+				Enabled: false,
+			},
+			expectError: nil,
+		},
+		{
+			desc: "RBS config not set",
+			svc: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
+				}},
+			},
+			expectConfig: nil,
+			expectError:  nil,
+		},
+		{
+			desc: "RBS config empty",
+			svc: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
+					RBSConfigKey: `{}`,
+				}},
+			},
+			expectConfig: &RBSConfig{
+				Enabled: false,
+			},
+			expectError: nil,
+		},
+		{
+			desc: "RBS config bad json",
+			svc: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
+					RBSConfigKey: `{"enabled: true}`,
+				}},
+			},
+			expectConfig: nil,
+			expectError:  fmt.Errorf("RBSConfig annotation is invalid json"),
+		},
+		{
+			desc: "RBS config bad enabled value",
+			svc: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
+					RBSConfigKey: `{"enabled": 30}`,
+				}},
+			},
+			expectConfig: nil,
+			expectError:  fmt.Errorf("RBSConfig annotation is invalid json"),
+		},
+		{
+			desc: "RBS config bad key",
+			svc: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
+					RBSConfigKey: `{"111": true}`,
+				}},
+			},
+			expectConfig: &RBSConfig{
+				Enabled: false,
+			},
+			expectError:  nil,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			rbsConfig, err := FromService(tc.svc).GetRBSConfig()
+
+			if err != nil && !strings.Contains(err.Error(), tc.expectError.Error()){
+				t.Errorf("Test case %q: Expect error to contain %q, but got: %q", tc.desc, tc.expectError, err)
+			}
+
+			if !reflect.DeepEqual(tc.expectConfig, rbsConfig) {
+				t.Errorf("Expected RBSConfig to be %v, got %v instead", tc.expectConfig, rbsConfig)
 			}
 		})
 	}
