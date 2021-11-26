@@ -40,14 +40,17 @@ type NodeController struct {
 	// hasSynced returns true if relevant caches have done their initial
 	// synchronization.
 	hasSynced func() bool
+
+	stopCh chan struct{}
 }
 
 // NewNodeController returns a new node update controller.
-func NewNodeController(ctx *context.ControllerContext) *NodeController {
+func NewNodeController(ctx *context.ControllerContext, stopCh chan struct{}) *NodeController {
 	c := &NodeController{
 		lister:       ctx.NodeInformer.GetIndexer(),
 		instancePool: ctx.InstancePool,
 		hasSynced:    ctx.HasSynced,
+		stopCh:       stopCh,
 	}
 	c.queue = utils.NewPeriodicTaskQueue("", "nodes", c.sync)
 
@@ -70,13 +73,15 @@ func NewNodeController(ctx *context.ControllerContext) *NodeController {
 // Run the queue to process updates for the controller. This must be run in a
 // separate goroutine (method will block until queue shutdown).
 func (c *NodeController) Run() {
+	defer c.Shutdown()
 	start := time.Now()
 	for !c.hasSynced() {
 		klog.V(2).Infof("Waiting for hasSynced (%s elapsed)", time.Now().Sub(start))
 		time.Sleep(1 * time.Second)
 	}
 	klog.V(2).Infof("Caches synced (took %s)", time.Now().Sub(start))
-	c.queue.Run()
+	go c.queue.Run()
+	<-c.stopCh
 }
 
 // Shutdown shuts down the goroutine that processes node updates.
