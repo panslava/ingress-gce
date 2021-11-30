@@ -195,7 +195,6 @@ func NewControllerContext(
 		context.EndpointInformer = informerv1.NewEndpointsInformer(kubeClient, config.Namespace, 0, utils.NewNamespaceIndexer())
 	}
 
-	context.InstancePool = instances.NewNodePool(context.Cloud, context.ClusterNamer, context, utils.GetBasePath(context.Cloud))
 	context.Translator = translator.NewTranslator(
 		context.ServiceInformer,
 		context.BackendConfigInformer,
@@ -206,7 +205,12 @@ func NewControllerContext(
 		context.UseEndpointSlices,
 		context.KubeClient,
 	)
-	context.InstancePool.Init(context.Translator)
+	context.InstancePool = instances.NewNodePool(context.Cloud,
+		context.ClusterNamer,
+		context,
+		utils.GetBasePath(context.Cloud),
+		context.Translator,
+	)
 
 	return context
 }
