@@ -116,21 +116,20 @@ func NewLoadBalancerController(
 	})
 
 	healthChecker := healthchecks.NewHealthChecker(ctx.Cloud, ctx.HealthCheckPath, ctx.DefaultBackendSvcPort.ID.Service)
-	instancePool := instances.NewNodePool(ctx.Cloud, ctx.ClusterNamer, ctx, utils.GetBasePath(ctx.Cloud))
 	backendPool := backends.NewPool(ctx.Cloud, ctx.ClusterNamer)
 
 	lbc := LoadBalancerController{
 		ctx:           ctx,
 		nodeLister:    ctx.NodeInformer.GetIndexer(),
-		Translator:    legacytranslator.NewTranslator(ctx),
+		Translator:    ctx.Translator,
 		stopCh:        stopCh,
 		hasSynced:     ctx.HasSynced,
-		nodes:         NewNodeController(ctx, instancePool),
-		instancePool:  instancePool,
+		nodes:         NewNodeController(ctx),
+		instancePool:  ctx.InstancePool,
 		l7Pool:        loadbalancers.NewLoadBalancerPool(ctx.Cloud, ctx.ClusterNamer, ctx, namer.NewFrontendNamerFactory(ctx.ClusterNamer, ctx.KubeSystemUID)),
 		backendSyncer: backends.NewBackendSyncer(backendPool, healthChecker, ctx.Cloud),
 		negLinker:     backends.NewNEGLinker(backendPool, negtypes.NewAdapter(ctx.Cloud), ctx.Cloud, ctx.SvcNegInformer.GetIndexer()),
-		igLinker:      backends.NewInstanceGroupLinker(instancePool, backendPool),
+		igLinker:      backends.NewInstanceGroupLinker(ctx.InstancePool, backendPool),
 		metrics:       ctx.ControllerMetrics,
 	}
 
@@ -319,8 +318,6 @@ func NewLoadBalancerController(
 
 // Init the controller
 func (lbc *LoadBalancerController) Init() {
-	// TODO(rramkumar): Try to get rid of this "Init".
-	lbc.instancePool.Init(lbc.Translator)
 	lbc.backendSyncer.Init(lbc.Translator)
 }
 
