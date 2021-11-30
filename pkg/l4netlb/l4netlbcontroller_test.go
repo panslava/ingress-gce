@@ -22,6 +22,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
@@ -33,8 +34,6 @@ import (
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog"
 	"k8s.io/legacy-cloud-providers/gce"
-
-	"testing"
 
 	ga "google.golang.org/api/compute/v1"
 	"k8s.io/ingress-gce/pkg/annotations"
@@ -217,7 +216,6 @@ func newL4NetLBServiceController() *L4NetLBController {
 	}
 
 	lc := NewL4NetLBController(ctx, stopCh)
-	lc.Init()
 	return lc
 }
 

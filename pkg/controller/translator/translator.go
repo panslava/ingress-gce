@@ -81,18 +81,18 @@ func NewTranslator(serviceInformer cache.SharedIndexInformer,
 
 // Translator helps with kubernetes -> gce api conversion.
 type Translator struct {
-	serviceInformer       cache.SharedIndexInformer
-	backendConfigInformer cache.SharedIndexInformer
-	nodeInformer          cache.SharedIndexInformer
-	podInformer           cache.SharedIndexInformer
-	endpointInformer      cache.SharedIndexInformer
-	endpointSliceInformer cache.SharedIndexInformer
-	useEndpointSlices     bool
-	kubeClient            kubernetes.Interface
+	ServiceInformer       cache.SharedIndexInformer
+	BackendConfigInformer cache.SharedIndexInformer
+	NodeInformer          cache.SharedIndexInformer
+	PodInformer           cache.SharedIndexInformer
+	EndpointInformer      cache.SharedIndexInformer
+	EndpointSliceInformer cache.SharedIndexInformer
+	UseEndpointSlices     bool
+	KubeClient            kubernetes.Interface
 }
 
 func (t *Translator) getCachedService(id utils.ServicePortID) (*api_v1.Service, error) {
-	obj, exists, err := t.serviceInformer.GetIndexer().Get(
+	obj, exists, err := t.ServiceInformer.GetIndexer().Get(
 		&api_v1.Service{
 			ObjectMeta: meta_v1.ObjectMeta{
 				Name:      id.Service.Name,
@@ -177,7 +177,7 @@ func setTrafficScaling(sp *utils.ServicePort, svc *api_v1.Service) error {
 // maybeEnableBackendConfig sets the backendConfig for the service port if necessary
 func (t *Translator) maybeEnableBackendConfig(sp *utils.ServicePort, svc *api_v1.Service, port *api_v1.ServicePort) error {
 	var beConfig *backendconfigv1.BackendConfig
-	beConfig, err := backendconfig.GetBackendConfigForServicePort(t.backendConfigInformer.GetIndexer(), svc, port)
+	beConfig, err := backendconfig.GetBackendConfigForServicePort(t.BackendConfigInformer.GetIndexer(), svc, port)
 	if err != nil {
 		// If we could not find a backend config name for the current
 		// service port, then do not return an error. Removing a reference
@@ -190,7 +190,7 @@ func (t *Translator) maybeEnableBackendConfig(sp *utils.ServicePort, svc *api_v1
 	// Object in cache could be changed in-flight. Deepcopy to
 	// reduce race conditions.
 	beConfig = beConfig.DeepCopy()
-	if err = backendconfig.Validate(t.kubeClient, beConfig); err != nil {
+	if err = backendconfig.Validate(t.KubeClient, beConfig); err != nil {
 		return errors.ErrBackendConfigValidation{BackendConfig: *beConfig, Err: err}
 	}
 
@@ -395,7 +395,7 @@ func getZone(n *api_v1.Node) string {
 
 // GetZoneForNode returns the zone for a given node by looking up its zone label.
 func (t *Translator) GetZoneForNode(name string) (string, error) {
-	nodeLister := t.nodeInformer.GetIndexer()
+	nodeLister := t.NodeInformer.GetIndexer()
 	nodes, err := listers.NewNodeLister(nodeLister).List(labels.Everything())
 	if err != nil {
 		return "", err
@@ -412,7 +412,7 @@ func (t *Translator) GetZoneForNode(name string) (string, error) {
 
 // ListZones returns a list of zones containing nodes that satisfy the given predicate.
 func (t *Translator) ListZones(predicate utils.NodeConditionPredicate) ([]string, error) {
-	nodeLister := t.nodeInformer.GetIndexer()
+	nodeLister := t.NodeInformer.GetIndexer()
 	return t.listZones(listers.NewNodeLister(nodeLister), predicate)
 }
 
@@ -435,7 +435,7 @@ func (t *Translator) getHTTPProbe(svc api_v1.Service, targetPort intstr.IntOrStr
 
 	// Lookup any container with a matching targetPort from the set of pods
 	// with a matching label selector.
-	pl, err := listPodsBySelector(t.podInformer.GetIndexer(), labels.SelectorFromSet(labels.Set(l)))
+	pl, err := listPodsBySelector(t.PodInformer.GetIndexer(), labels.SelectorFromSet(labels.Set(l)))
 	if err != nil {
 		return nil, err
 	}
@@ -492,10 +492,10 @@ func (t *Translator) GatherEndpointPorts(svcPorts []utils.ServicePort) []string 
 			if p.TargetPort.Type == intstr.Int {
 				endpointPorts = []int{p.TargetPort.IntValue()}
 			} else {
-				if t.useEndpointSlices {
-					endpointPorts = listEndpointTargetPortsFromEndpointSlices(t.endpointSliceInformer.GetIndexer(), p.ID.Service.Namespace, p.ID.Service.Name, p.PortName)
+				if t.UseEndpointSlices {
+					endpointPorts = listEndpointTargetPortsFromEndpointSlices(t.EndpointSliceInformer.GetIndexer(), p.ID.Service.Namespace, p.ID.Service.Name, p.PortName)
 				} else {
-					endpointPorts = listEndpointTargetPortsFromEndpoints(t.endpointInformer.GetIndexer(), p.ID.Service.Namespace, p.ID.Service.Name, p.PortName)
+					endpointPorts = listEndpointTargetPortsFromEndpoints(t.EndpointInformer.GetIndexer(), p.ID.Service.Namespace, p.ID.Service.Name, p.PortName)
 				}
 			}
 			for _, ep := range endpointPorts {
@@ -530,7 +530,7 @@ func getProbeScheme(protocol annotations.AppProtocol) api_v1.URIScheme {
 
 // GetProbe returns a probe that's used for the given nodeport
 func (t *Translator) GetProbe(port utils.ServicePort) (*api_v1.Probe, error) {
-	sl := t.serviceInformer.GetIndexer().List()
+	sl := t.ServiceInformer.GetIndexer().List()
 
 	// Find the label and target port of the one service with the given nodePort
 	var service api_v1.Service
