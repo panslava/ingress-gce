@@ -45,6 +45,12 @@ import (
 const (
 	// The max tolerated delay between update being enqueued and sync being invoked.
 	enqueueToSyncDelayThreshold = 15 * time.Minute
+	// RBSAnnotationKey is annotated on a Service object to indicate
+	// opt-in mode for RBS NetLB
+	// TODO(slavik): import this from gce_annotations when it will be merged in k8s
+	RBSAnnotationKey = "cloud.google.com/l4-rbs"
+	// RBSEnabled is an annotation to indicate the Service is opt-in for RBS
+	RBSEnabled = "enabled"
 )
 
 type L4NetLBController struct {
@@ -131,11 +137,11 @@ func needsAddition(newSvc, oldSvc *v1.Service) bool {
 }
 
 // needsDeletion return true if svc required deleting RBS based NetLB
-func needsDeletion(svc *v1.Service) bool {
-	if !utils.IsL4NetLBService(svc) {
+func (lc *L4NetLBController) needsDeletion(svc *v1.Service) bool {
+	if !lc.isRbsBasedService(svc) {
 		return false
 	}
-	if common.IsDeletionCandidateForGivenFinalizer(svc.ObjectMeta, common.NetLBFinalizerV2) {
+	if svc.ObjectMeta.DeletionTimestamp != nil {
 		return true
 	}
 	needsNetLB, _ := annotations.WantsL4NetLB(svc)
@@ -156,14 +162,14 @@ func (lc *L4NetLBController) needsUpdate(newSvc, oldSvc *v1.Service) bool {
 	if oldSvc == nil {
 		return false
 	}
-	oldSvcWantsILB, oldType := annotations.WantsL4NetLB(oldSvc)
-	newSvcWantsILB, newType := annotations.WantsL4NetLB(newSvc)
+	oldSvcWantsNetLB, oldType := annotations.WantsL4NetLB(oldSvc)
+	newSvcWantsNetLB, newType := annotations.WantsL4NetLB(newSvc)
 	recorder := lc.ctx.Recorder(oldSvc.Namespace)
-	if oldSvcWantsILB != newSvcWantsILB {
+	if oldSvcWantsNetLB != newSvcWantsNetLB {
 		recorder.Eventf(newSvc, v1.EventTypeNormal, "Type", "%v -> %v", oldType, newType)
 		return true
 	}
-	if !newSvcWantsILB && !oldSvcWantsILB {
+	if !newSvcWantsNetLB && !oldSvcWantsNetLB {
 		// Ignore any other changes if both the previous and new service do not need L4 External LB.
 		return false
 	}
@@ -220,25 +226,31 @@ func (lc *L4NetLBController) needsUpdate(newSvc, oldSvc *v1.Service) bool {
 
 // shouldProcessUpdate checks if given service should be process by controller
 func (lc *L4NetLBController) shouldProcessService(newSvc, oldSvc *v1.Service) bool {
-	if needsAddition(newSvc, oldSvc) || lc.needsUpdate(newSvc, oldSvc) || needsDeletion(newSvc) {
-		l4netlb := loadbalancers.NewL4NetLB(newSvc, lc.ctx.Cloud, meta.Regional, lc.namer, lc.ctx.Recorder(newSvc.Namespace), &lc.sharedResourcesLock)
-		return lc.isRbsBasedLBService(newSvc, l4netlb)
+	if !lc.isRbsBasedService(newSvc) {
+		return false
+	}
+	if needsAddition(newSvc, oldSvc) || lc.needsUpdate(newSvc, oldSvc) || lc.needsDeletion(newSvc) {
+		return true
 	}
 	return needsPeriodicEnqueue(newSvc, oldSvc)
 }
 
-// isRbsBasedLBService returns if the given LoadBalancer service is not legacy target pool based LoadBalancer.
-func (lc *L4NetLBController) isRbsBasedLBService(svc *v1.Service, l4 *loadbalancers.L4NetLB) bool {
-	// skip services that are being handled by the legacy service controller.
-	if utils.IsLegacyL4NetLBService(svc) {
-		klog.Warningf("Ignoring update for service %s:%s managed by service controller", svc.Namespace, svc.Name)
-		return false
+func (lc *L4NetLBController) hasRBSForwardingRule(svc *v1.Service) bool {
+	l4netlb := loadbalancers.NewL4NetLB(svc, lc.ctx.Cloud, meta.Regional, lc.namer, lc.ctx.Recorder(svc.Namespace), &lc.sharedResourcesLock)
+	frName := utils.LegacyForwardingRuleName(svc)
+	existingFR := l4netlb.GetForwardingRule(frName, meta.VersionGA)
+	return existingFR != nil && existingFR.LoadBalancingScheme == string(cloud.SchemeExternal) && existingFR.BackendService != ""
+}
+
+// isRbsBasedService checks if service has either Rbs annotation, finalizer or RBSForwardingRule
+func (lc *L4NetLBController) isRbsBasedService(svc *v1.Service) bool {
+	if val, ok := svc.Annotations[RBSAnnotationKey]; ok && val == RBSEnabled {
+		return true
 	}
-	if lc.hasLegacyForwardingRule(svc) {
-		klog.Warningf("Ignoring update for service %s:%s which have legacy forwarding rule", svc.Namespace, svc.Name)
-		return false
+	if utils.HasL4NetLBFinalizerV2(svc) || lc.hasRBSForwardingRule(svc) {
+		return true
 	}
-	return true
+	return false
 }
 
 func (lc *L4NetLBController) checkHealth() error {
@@ -283,7 +295,7 @@ func (lc *L4NetLBController) sync(key string) error {
 		klog.V(3).Infof("Ignoring sync of non-existent service %s", key)
 		return nil
 	}
-	if needsDeletion(svc) {
+	if lc.needsDeletion(svc) {
 		klog.V(3).Infof("Deleting L4 External LoadBalancer resources for service %s", key)
 		result := lc.garbageCollectRBSNetLB(key, svc)
 		if result == nil {
@@ -308,8 +320,8 @@ func (lc *L4NetLBController) sync(key string) error {
 // Returns an error if processing the service update failed.
 func (lc *L4NetLBController) syncInternal(service *v1.Service) *loadbalancers.SyncResultNetLB {
 	l4netlb := loadbalancers.NewL4NetLB(service, lc.ctx.Cloud, meta.Regional, lc.namer, lc.ctx.Recorder(service.Namespace), &lc.sharedResourcesLock)
-	// check again that it's not legacy service
-	if !lc.isRbsBasedLBService(service, l4netlb) {
+	// check again that rbs is enabled
+	if !lc.isRbsBasedService(service) {
 		return nil
 	}
 
@@ -396,15 +408,6 @@ func (lc *L4NetLBController) ensureServiceStatus(svc *v1.Service, newStatus *v1.
 		return nil
 	}
 	return patch.PatchServiceLoadBalancerStatus(lc.ctx.KubeClient.CoreV1(), svc, *newStatus)
-}
-
-// hasLegacyForwardingRule return true if forwarding rule is target pool based
-func (lc *L4NetLBController) hasLegacyForwardingRule(svc *v1.Service) bool {
-	//TODO(kl52752) Add check for service annotation first to reduce GCE API calls
-	l4netlb := loadbalancers.NewL4NetLB(svc, lc.ctx.Cloud, meta.Regional, lc.namer, lc.ctx.Recorder(svc.Namespace), &lc.sharedResourcesLock)
-	frName := utils.LegacyForwardingRuleName(svc)
-	existingFR := l4netlb.GetForwardingRule(frName, meta.VersionGA)
-	return existingFR != nil && existingFR.LoadBalancingScheme == string(cloud.SchemeExternal) && existingFR.Target != ""
 }
 
 // garbageCollectRBSNetLB cleans-up all gce resources related to service and removes NetLB finalizer

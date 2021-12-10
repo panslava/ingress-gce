@@ -22,6 +22,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
@@ -33,8 +34,6 @@ import (
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog"
 	"k8s.io/legacy-cloud-providers/gce"
-
-	"testing"
 
 	"google.golang.org/api/compute/v1"
 	ga "google.golang.org/api/compute/v1"
@@ -118,7 +117,7 @@ func checkForwardingRule(lc *L4NetLBController, svc *v1.Service, expectedPortRan
 
 func createAndSyncNetLBSvc(t *testing.T) (svc *v1.Service, lc *L4NetLBController) {
 	lc = newL4NetLBServiceController()
-	svc = test.NewL4NetLBService(8080, defaultNodePort)
+	svc = test.NewL4NetLBRbsService(8080, defaultNodePort)
 	addNetLBService(lc, svc)
 	key, _ := common.KeyFunc(svc)
 	err := lc.sync(key)
@@ -130,6 +129,17 @@ func createAndSyncNetLBSvc(t *testing.T) (svc *v1.Service, lc *L4NetLBController
 		t.Errorf("Failed to lookup service %s, err %v", svc.Name, err)
 	}
 	validateSvcStatus(svc, t)
+	return
+}
+
+func createLegacyNetLBSvc(t *testing.T) (svc *v1.Service, lc *L4NetLBController) {
+	lc = newL4NetLBServiceController()
+	svc = test.NewL4LegacyNetLBService(8080, defaultNodePort)
+	addNetLBService(lc, svc)
+	svc, err := lc.ctx.KubeClient.CoreV1().Services(svc.Namespace).Get(context.TODO(), svc.Name, metav1.GetOptions{})
+	if err != nil {
+		t.Errorf("Failed to lookup service %s, err %v", svc.Name, err)
+	}
 	return
 }
 
@@ -257,7 +267,7 @@ func TestProcessMultipleNetLBServices(t *testing.T) {
 			var svcNames []string
 			for port := 8000; port < 8020; port++ {
 				nodePort := int32(30000 + port)
-				newSvc := test.NewL4NetLBService(port, nodePort)
+				newSvc := test.NewL4NetLBRbsService(port, nodePort)
 				newSvc.Name = newSvc.Name + fmt.Sprintf("-%d", port)
 				svcNames = append(svcNames, newSvc.Name)
 				addNetLBService(lc, newSvc)
@@ -326,7 +336,7 @@ func TestForwardingRuleWithPortRange(t *testing.T) {
 			expectedPortRange: "80-8081",
 		},
 	} {
-		svc := test.NewL4NetLBServiceMultiplePorts(tc.svcName, tc.ports)
+		svc := test.NewL4NetLBRbsServiceMultiplePorts(tc.svcName, tc.ports)
 		addNetLBService(lc, svc)
 		key, _ := common.KeyFunc(svc)
 		if err := lc.sync(key); err != nil {
@@ -366,7 +376,7 @@ func TestProcessServiceCreateWithUsersProvidedIP(t *testing.T) {
 	lc := newL4NetLBServiceController()
 
 	lc.ctx.Cloud.Compute().(*cloud.MockGCE).MockAddresses.InsertHook = test.InsertAddressErrorHook
-	svc := test.NewL4NetLBService(8080, defaultNodePort)
+	svc := test.NewL4NetLBRbsService(8080, defaultNodePort)
 	svc.Spec.LoadBalancerIP = usersIP
 	addNetLBService(lc, svc)
 	key, _ := common.KeyFunc(svc)
@@ -421,13 +431,13 @@ func TestProcessServiceDeletion(t *testing.T) {
 	if !common.HasGivenFinalizer(svc.ObjectMeta, common.NetLBFinalizerV2) {
 		t.Fatalf("Expected L4 External LoadBalancer finalizer")
 	}
-	if needsDeletion(svc) {
+	if lc.needsDeletion(svc) {
 		t.Fatalf("Service should not be marked for deletion")
 	}
 	// Mark the service for deletion by updating timestamp
 	svc.DeletionTimestamp = &metav1.Time{}
 	updateNetLBService(lc, svc)
-	if !needsDeletion(svc) {
+	if !lc.needsDeletion(svc) {
 		t.Fatalf("Service should be marked for deletion")
 	}
 	key, _ := common.KeyFunc(svc)
@@ -465,7 +475,7 @@ func TestInternalLoadBalancerShouldNotBeProcessByL4NetLBController(t *testing.T)
 	// Mark the service for deletion by updating timestamp
 	ilbSvc.DeletionTimestamp = &metav1.Time{}
 	updateNetLBService(lc, ilbSvc)
-	if needsDeletion(ilbSvc) {
+	if lc.needsDeletion(ilbSvc) {
 		t.Fatalf("Service should not be marked for deletion!")
 	}
 }
@@ -490,7 +500,7 @@ func TestProcessServiceCreationFailed(t *testing.T) {
 	} {
 		lc := newL4NetLBServiceController()
 		param.addMockFunc((lc.ctx.Cloud.Compute().(*cloud.MockGCE)))
-		svc := test.NewL4NetLBService(8080, defaultNodePort)
+		svc := test.NewL4NetLBRbsService(8080, defaultNodePort)
 		addNetLBService(lc, svc)
 		key, _ := common.KeyFunc(svc)
 		err := lc.sync(key)
@@ -521,7 +531,7 @@ func TestProcessServiceDeletionFailed(t *testing.T) {
 		}
 		svc.DeletionTimestamp = &metav1.Time{}
 		updateNetLBService(lc, svc)
-		if !needsDeletion(svc) {
+		if !lc.needsDeletion(svc) {
 			t.Fatalf("Service should be marked for deletion")
 		}
 		param.addMockFunc((lc.ctx.Cloud.Compute().(*cloud.MockGCE)))
@@ -729,8 +739,8 @@ func updateAndAssertExternalTrafficPolicy(newSvc *v1.Service, lc *L4NetLBControl
 	return nil
 }
 
-func TestControllerShouldNotProcessServicesWithLegacyFwR(t *testing.T) {
-	svc, l4netController := createAndSyncNetLBSvc(t)
+func TestControllerShouldNotProcessServicesWithoutRbsEnabled(t *testing.T) {
+	svc, l4netController := createLegacyNetLBSvc(t)
 	// Add Forwarding Rule pointing to Target
 	l4netController.ctx.Cloud.Compute().(*cloud.MockGCE).MockForwardingRules.GetHook = test.GetLegacyForwardingRule
 
@@ -738,10 +748,8 @@ func TestControllerShouldNotProcessServicesWithLegacyFwR(t *testing.T) {
 	if err != nil {
 		t.Errorf("Failed to lookup service %s, err: %v", svc.Name, err)
 	}
-	newSvc.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyTypeLocal
-	updateNetLBService(l4netController, svc)
-	if !l4netController.hasLegacyForwardingRule(newSvc) {
-		t.Errorf("Service should detect legacy forwarding rule")
+	if l4netController.isRbsBasedService(newSvc) {
+		t.Errorf("Service should detect that service has Rbs disabled")
 	}
 	if l4netController.shouldProcessService(svc, newSvc) {
 		t.Errorf("Service should not be marked for update")

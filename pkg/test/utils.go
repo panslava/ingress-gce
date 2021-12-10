@@ -30,6 +30,9 @@ const (
 	testServiceName           = "ilbtest"
 	netLbServiceName          = "netbtest"
 	testServiceNamespace      = "default"
+	// TODO(slavik): import this from gce_annotations when it will be merged in k8s
+	RBSAnnotationKey = "cloud.google.com/l4-rbs"
+	RBSEnabled       = "enabled"
 )
 
 var (
@@ -93,12 +96,13 @@ func NewL4ILBService(onlyLocal bool, port int) *api_v1.Service {
 	return svc
 }
 
-// NewL4NetLBService creates a Service of type LoadBalancer.
-func NewL4NetLBService(port int, nodePort int32) *api_v1.Service {
+// NewL4NetLBRbsService creates a Service of type LoadBalancer.
+func NewL4NetLBRbsService(port int, nodePort int32) *api_v1.Service {
 	svc := &api_v1.Service{
 		ObjectMeta: meta_v1.ObjectMeta{
-			Name:      netLbServiceName,
-			Namespace: testServiceNamespace,
+			Name:        netLbServiceName,
+			Namespace:   testServiceNamespace,
+			Annotations: map[string]string{RBSAnnotationKey: RBSEnabled},
 		},
 		Spec: api_v1.ServiceSpec{
 			Type:            api_v1.ServiceTypeLoadBalancer,
@@ -112,12 +116,33 @@ func NewL4NetLBService(port int, nodePort int32) *api_v1.Service {
 	return svc
 }
 
-// NewL4NetLBService creates a Service of type LoadBalancer with multiple named ports.
-func NewL4NetLBServiceMultiplePorts(name string, ports []int32) *api_v1.Service {
+// NewL4NetLBRbsService creates a Service of type LoadBalancer.
+func NewL4LegacyNetLBService(port int, nodePort int32) *api_v1.Service {
 	svc := &api_v1.Service{
 		ObjectMeta: meta_v1.ObjectMeta{
-			Name:      name,
-			Namespace: testServiceNamespace,
+			Name:        netLbServiceName,
+			Namespace:   testServiceNamespace,
+			Annotations: make(map[string]string),
+		},
+		Spec: api_v1.ServiceSpec{
+			Type:            api_v1.ServiceTypeLoadBalancer,
+			SessionAffinity: api_v1.ServiceAffinityClientIP,
+			Ports: []api_v1.ServicePort{
+				{Name: "testport", Port: int32(port), Protocol: "TCP", NodePort: nodePort},
+			},
+			ExternalTrafficPolicy: api_v1.ServiceExternalTrafficPolicyTypeCluster,
+		},
+	}
+	return svc
+}
+
+// NewL4NetLBRbsService creates a Service of type LoadBalancer with multiple named ports.
+func NewL4NetLBRbsServiceMultiplePorts(name string, ports []int32) *api_v1.Service {
+	svc := &api_v1.Service{
+		ObjectMeta: meta_v1.ObjectMeta{
+			Name:        name,
+			Namespace:   testServiceNamespace,
+			Annotations: map[string]string{RBSAnnotationKey: RBSEnabled},
 		},
 		Spec: api_v1.ServiceSpec{
 			Type:            api_v1.ServiceTypeLoadBalancer,
