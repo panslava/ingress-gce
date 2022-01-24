@@ -328,6 +328,15 @@ func (n *Namer) InstanceGroup() string {
 	return n.decorateName(n.prefix + "-" + igPrefix)
 }
 
+// InstanceGroupByIndex constructs the name for an Instance Group when multiple Instance Groups are in use.
+func (n *Namer) InstanceGroupByIndex(index int) string {
+	name := n.InstanceGroup()
+	if index == 0 {
+		return name
+	}
+	return fmt.Sprintf("%s-%d", name, index)
+}
+
 // firewallRuleSuffix constructs the glbc specific suffix for the FirewallRule.
 func (n *Namer) firewallRuleSuffix() string {
 	firewallName := n.Firewall()

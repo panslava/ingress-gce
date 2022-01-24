@@ -41,7 +41,7 @@ const (
 
 // Instances implements NodePool.
 type Instances struct {
-	cloud InstanceGroups
+	Cloud InstanceGroups
 	ZoneLister
 	namer              namer.BackendNamer
 	recorder           record.EventRecorder
@@ -67,7 +67,7 @@ type NodePoolConfig struct {
 // NewNodePool creates a new node pool using NodePoolConfig.
 func NewNodePool(config *NodePoolConfig) NodePool {
 	return &Instances{
-		cloud:              config.Cloud,
+		Cloud:              config.Cloud,
 		namer:              config.Namer,
 		recorder:           config.Recorders.Recorder(""), // No namespace
 		instanceLinkFormat: config.BasePath + "zones/%s/instances/%s",
@@ -87,7 +87,7 @@ func (i *Instances) EnsureInstanceGroupsAndPorts(name string, ports []int64) (ig
 	}
 
 	for _, zone := range zones {
-		ig, err := i.ensureInstanceGroupAndPorts(name, zone, ports)
+		ig, err := i.EnsureInstanceGroupAndPorts(name, zone, ports)
 		if err != nil {
 			return nil, err
 		}
@@ -97,7 +97,7 @@ func (i *Instances) EnsureInstanceGroupsAndPorts(name string, ports []int64) (ig
 	return igs, nil
 }
 
-func (i *Instances) ensureInstanceGroupAndPorts(name, zone string, ports []int64) ([]*compute.InstanceGroup, error) {
+func (i *Instances) EnsureInstanceGroupAndPorts(name, zone string, ports []int64) ([]*compute.InstanceGroup, error) {
 	igs, err := i.Get(name, zone)
 	if err != nil && !utils.IsHTTPErrorCode(err, http.StatusNotFound) {
 		klog.Errorf("Failed to get instance group %v/%v, err: %v", zone, name, err)
@@ -106,7 +106,7 @@ func (i *Instances) ensureInstanceGroupAndPorts(name, zone string, ports []int64
 
 	if igs == nil {
 		klog.V(3).Infof("Creating instance group %v/%v.", zone, name)
-		if err = i.cloud.CreateInstanceGroup(&compute.InstanceGroup{Name: name}, zone); err != nil {
+		if err = i.Cloud.CreateInstanceGroup(&compute.InstanceGroup{Name: name}, zone); err != nil {
 			// Error may come back with StatusConflict meaning the instance group was created by another controller
 			// possibly the Service Controller for internal load balancers.
 			if utils.IsHTTPErrorCode(err, http.StatusConflict) {
@@ -116,7 +116,7 @@ func (i *Instances) ensureInstanceGroupAndPorts(name, zone string, ports []int64
 				return nil, err
 			}
 		}
-		ig, err := i.cloud.GetInstanceGroup(name, zone)
+		ig, err := i.Cloud.GetInstanceGroup(name, zone)
 		if err != nil {
 			klog.Errorf("Failed to get instance group %v/%v after ensuring existence, err: %v", zone, name, err)
 			return nil, err
@@ -164,7 +164,7 @@ func (i *Instances) setPorts(igs []*compute.InstanceGroup, name, zone string, po
 	if len(newNamedPorts) > 0 {
 		klog.V(3).Infof("Instance group %v/%v does not have ports %+v, adding them now.", zone, name, newPorts)
 		for _, ig := range igs {
-			if err := i.cloud.SetNamedPortsOfInstanceGroup(ig.Name, zone, append(ig.NamedPorts, newNamedPorts...)); err != nil {
+			if err := i.Cloud.SetNamedPortsOfInstanceGroup(ig.Name, zone, append(ig.NamedPorts, newNamedPorts...)); err != nil {
 				return err
 			}
 		}
@@ -182,7 +182,7 @@ func (i *Instances) DeleteInstanceGroup(name string) error {
 		return err
 	}
 	for _, zone := range zones {
-		if err := i.cloud.DeleteInstanceGroup(name, zone); err != nil {
+		if err := i.Cloud.DeleteInstanceGroup(name, zone); err != nil {
 			if utils.IsNotFoundError(err) {
 				klog.V(3).Infof("Instance group %v in zone %v did not exist", name, zone)
 			} else if utils.IsInUsedByError(err) {
@@ -209,7 +209,7 @@ func (i *Instances) list(name string) (sets.String, error) {
 	}
 
 	for _, zone := range zones {
-		instances, err := i.cloud.ListInstancesInInstanceGroup(name, zone, allInstances)
+		instances, err := i.Cloud.ListInstancesInInstanceGroup(name, zone, allInstances)
 		if err != nil {
 			return nodeNames, err
 		}
@@ -226,7 +226,7 @@ func (i *Instances) list(name string) (sets.String, error) {
 
 // Get returns the Instance Group by name.
 func (i *Instances) Get(name, zone string) ([]*compute.InstanceGroup, error) {
-	ig, err := i.cloud.GetInstanceGroup(name, zone)
+	ig, err := i.Cloud.GetInstanceGroup(name, zone)
 	if err != nil {
 		return nil, err
 	}
@@ -243,7 +243,7 @@ func (i *Instances) List() ([]string, error) {
 	}
 
 	for _, zone := range zones {
-		igsForZone, err := i.cloud.ListInstanceGroups(zone)
+		igsForZone, err := i.Cloud.ListInstanceGroups(zone)
 		if err != nil {
 			return nil, err
 		}
@@ -263,9 +263,9 @@ func (i *Instances) List() ([]string, error) {
 	return names, nil
 }
 
-// splitNodesByZones takes a list of node names and returns a map of zone:node names.
+// SplitNodesByZone takes a list of node names and returns a map of zone:node names.
 // It figures out the zones by asking the zoneLister.
-func (i *Instances) splitNodesByZone(names []string) map[string][]string {
+func (i *Instances) SplitNodesByZone(names []string) map[string][]string {
 	nodesByZone := map[string][]string{}
 	for _, name := range names {
 		zone, err := i.GetZoneForNode(name)
@@ -281,9 +281,9 @@ func (i *Instances) splitNodesByZone(names []string) map[string][]string {
 	return nodesByZone
 }
 
-// getInstanceReferences creates and returns the instance references by generating the
+// GetInstanceReferences creates and returns the instance references by generating the
 // expected instance URLs
-func (i *Instances) getInstanceReferences(zone string, nodeNames []string) (refs []*compute.InstanceReference) {
+func (i *Instances) GetInstanceReferences(zone string, nodeNames []string) (refs []*compute.InstanceReference) {
 	for _, nodeName := range nodeNames {
 		refs = append(refs, &compute.InstanceReference{Instance: fmt.Sprintf(i.instanceLinkFormat, zone, canonicalizeInstanceName(nodeName))})
 	}
@@ -294,9 +294,9 @@ func (i *Instances) getInstanceReferences(zone string, nodeNames []string) (refs
 func (i *Instances) add(groupName string, names []string) error {
 	events.GlobalEventf(i.recorder, core.EventTypeNormal, events.AddNodes, "Adding %s to InstanceGroup %q", events.TruncatedStringList(names), groupName)
 	var errs []error
-	for zone, nodeNames := range i.splitNodesByZone(names) {
+	for zone, nodeNames := range i.SplitNodesByZone(names) {
 		klog.V(1).Infof("Adding nodes %v to %v in zone %v", nodeNames, groupName, zone)
-		if err := i.cloud.AddInstancesToInstanceGroup(groupName, zone, i.getInstanceReferences(zone, nodeNames)); err != nil {
+		if err := i.Cloud.AddInstancesToInstanceGroup(groupName, zone, i.GetInstanceReferences(zone, nodeNames)); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -313,9 +313,9 @@ func (i *Instances) add(groupName string, names []string) error {
 func (i *Instances) remove(groupName string, names []string) error {
 	events.GlobalEventf(i.recorder, core.EventTypeNormal, events.RemoveNodes, "Removing %s from InstanceGroup %q", events.TruncatedStringList(names), groupName)
 	var errs []error
-	for zone, nodeNames := range i.splitNodesByZone(names) {
+	for zone, nodeNames := range i.SplitNodesByZone(names) {
 		klog.V(1).Infof("Removing nodes %v from %v in zone %v", nodeNames, groupName, zone)
-		if err := i.cloud.RemoveInstancesFromInstanceGroup(groupName, zone, i.getInstanceReferences(zone, nodeNames)); err != nil {
+		if err := i.Cloud.RemoveInstancesFromInstanceGroup(groupName, zone, i.GetInstanceReferences(zone, nodeNames)); err != nil {
 			errs = append(errs, err)
 		}
 	}

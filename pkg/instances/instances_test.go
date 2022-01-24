@@ -223,7 +223,7 @@ func TestGetInstanceReferences(t *testing.T) {
 		expectedRefs[fmt.Sprintf("%szones/%s/instances/%s", basePath, defaultZone, name)] = struct{}{}
 	}
 
-	refs := instances.getInstanceReferences(defaultZone, nodeNames)
+	refs := instances.GetInstanceReferences(defaultZone, nodeNames)
 	for _, ref := range refs {
 		if _, ok := expectedRefs[ref.Instance]; !ok {
 			t.Errorf("found unexpected reference: %s, expected only %+v", ref.Instance, expectedRefs)

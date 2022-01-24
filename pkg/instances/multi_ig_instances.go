@@ -34,7 +34,7 @@ type MultiIGInstances struct {
 func NewMultiIGInstances(cloud InstanceGroups, namer namer.BackendNamer, recorders recorderSource, basePath string, zl ZoneLister) *MultiIGInstances {
 	multiIGInstances := &MultiIGInstances{
 		Instances: &Instances{
-			cloud:              cloud,
+			Cloud:              cloud,
 			namer:              namer,
 			recorder:           recorders.Recorder(""), // No namespace
 			instanceLinkFormat: basePath + "zones/%s/instances/%s",
@@ -56,7 +56,7 @@ func (igc *MultiIGInstances) Sync(nodeNames []string) error {
 
 func (igc *MultiIGInstances) Get(name, zone string) ([]*compute.InstanceGroup, error) {
 	var igs []*compute.InstanceGroup
-	igsForZone, err := igc.cloud.ListInstanceGroups(zone)
+	igsForZone, err := igc.Cloud.ListInstanceGroups(zone)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +79,6 @@ func (igc *MultiIGInstances) EnsureInstanceGroupsAndPorts(name string, ports []i
 	}
 
 	for _, zone := range zones {
-
 		ig, err := igc.Get(name, zone)
 		if err != nil {
 			return nil, err

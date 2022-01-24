@@ -37,6 +37,7 @@ type NodePool interface {
 	Sync(nodeNames []string) error
 	Get(name, zone string) ([]*compute.InstanceGroup, error)
 	List() ([]string, error)
+	SplitNodesByZone(names []string) map[string][]string
 }
 
 // InstanceGroups is an interface for managing gce instances groups, and the instances therein.

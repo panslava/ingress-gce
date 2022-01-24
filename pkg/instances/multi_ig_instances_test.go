@@ -18,10 +18,11 @@ package instances
 
 import (
 	"fmt"
+	"testing"
+
 	compute "google.golang.org/api/compute/v1"
 	"k8s.io/ingress-gce/pkg/test"
 	"k8s.io/ingress-gce/pkg/utils/namer"
-	"testing"
 )
 
 const (
@@ -37,8 +38,6 @@ func TestGetInstanceGroups(t *testing.T) {
 	backendNamer := namer.NewNamer(clusterID, emptyFirewallName)
 	zones := []string{zone}
 	zoneLister := &FakeZoneLister{zones}
-	fakeCloud := NewFakeInstanceGroups(nil, defaultNamer)
-	multiIGInst := NewMultiIGInstances(fakeCloud, backendNamer, recorder, emptyBasePath, zoneLister)
 
 	testCases := []struct {
 		name           string
@@ -86,7 +85,14 @@ func TestGetInstanceGroups(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			fakeCloud.instanceGroups = tc.instanceGroups
+			fakeCloud := NewEmptyFakeInstanceGroups()
+			multiIGInst := NewMultiIGInstances(fakeCloud, backendNamer, recorder, emptyBasePath, zoneLister)
+			for _, ig := range tc.instanceGroups {
+				err := fakeCloud.CreateInstanceGroup(ig, zone)
+				if err != nil {
+					t.Errorf("Error while creating fake instance groups: %v", err)
+				}
+			}
 			result, err := multiIGInst.Get(igName, zone)
 			if len(result) != tc.expecetedIGs {
 				t.Errorf("Incorrect number of instance grouos, got: %v, want: %v", len(result), tc.expecetedIGs)
@@ -104,8 +110,6 @@ func TestEnsureInstanceGroupsAndPorts(t *testing.T) {
 	backendNamer := namer.NewNamer(clusterID, emptyFirewallName)
 	zones := []string{zone}
 	zoneLister := &FakeZoneLister{zones}
-	fakeCloud := NewFakeInstanceGroups(nil, defaultNamer)
-	multiIGInst := NewMultiIGInstances(fakeCloud, backendNamer, recorder, emptyBasePath, zoneLister)
 
 	testCases := []struct {
 		name           string
@@ -152,7 +156,14 @@ func TestEnsureInstanceGroupsAndPorts(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			fakeCloud.instanceGroups = tc.instanceGroups
+			fakeCloud := NewEmptyFakeInstanceGroups()
+			multiIGInst := NewMultiIGInstances(fakeCloud, backendNamer, recorder, emptyBasePath, zoneLister)
+			for _, ig := range tc.instanceGroups {
+				err := fakeCloud.CreateInstanceGroup(ig, ig.Zone)
+				if err != nil {
+					return
+				}
+			}
 			result, err := multiIGInst.EnsureInstanceGroupsAndPorts(igName, tc.ports)
 			if len(result) != tc.expecetedIGs {
 				t.Errorf("Incorrect number of instance grouos, got: %v, want: %v", len(result), tc.expecetedIGs)
