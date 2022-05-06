@@ -140,7 +140,14 @@ func (f *FakeInstanceGroups) AddInstancesToInstanceGroup(name, zone string, inst
 		return err
 	}
 
-	f.zonesToIGsToInstances[zone][ig].Insert(instanceNames...)
+	newValue := sets.NewString(f.zonesToIGsToInstances[zone][ig].List()...)
+	newValue.Insert(instanceNames...)
+
+	if len(newValue) > f.maxIGSize {
+		return test.FakeGoogleAPIRequestEntityTooLargeError()
+	}
+
+	f.zonesToIGsToInstances[zone][ig] = newValue
 	return nil
 }
 
