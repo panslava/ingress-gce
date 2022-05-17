@@ -17,9 +17,10 @@ package loadbalancers
 
 import (
 	"fmt"
-	"k8s.io/ingress-gce/pkg/healthchecks"
 	"strings"
 	"testing"
+
+	"k8s.io/ingress-gce/pkg/healthchecks"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
@@ -40,8 +41,13 @@ import (
 const (
 	usersIP        = "35.10.211.60"
 	usersIPPremium = "35.10.211.70"
-	userAddrName   = "UserStaticAddress"
 )
+
+func ensureFrontend(l4netlb *L4NetLB, nodeNames []string, svc *v1.Service) *L4NetLBSyncResult {
+	frName := l4netlb.GetFRName()
+	existingForwardingRule := l4netlb.GetForwardingRule(frName, meta.VersionGA)
+	return l4netlb.EnsureFrontendWithExistingFwRule(nodeNames, svc, existingForwardingRule)
+}
 
 func TestEnsureL4NetLoadBalancer(t *testing.T) {
 	t.Parallel()
@@ -58,7 +64,7 @@ func TestEnsureL4NetLoadBalancer(t *testing.T) {
 	if _, err := test.CreateAndInsertNodes(l4netlb.cloud, nodeNames, vals.ZoneName); err != nil {
 		t.Errorf("Unexpected error when adding nodes %v", err)
 	}
-	result := l4netlb.EnsureFrontend(nodeNames, svc)
+	result := ensureFrontend(l4netlb, nodeNames, svc)
 	if result.Error != nil {
 		t.Errorf("Failed to ensure loadBalancer, err %v", result.Error)
 	}
@@ -109,7 +115,7 @@ func TestDeleteL4NetLoadBalancer(t *testing.T) {
 	if _, err := test.CreateAndInsertNodes(l4NetLB.cloud, nodeNames, vals.ZoneName); err != nil {
 		t.Errorf("Unexpected error when adding nodes %v", err)
 	}
-	result := l4NetLB.EnsureFrontend(nodeNames, svc)
+	result := ensureFrontend(l4NetLB, nodeNames, svc)
 	if result.Error != nil {
 		t.Errorf("Failed to ensure loadBalancer, err %v", result.Error)
 	}
@@ -168,7 +174,7 @@ func TestHealthCheckFirewallDeletionWithILB(t *testing.T) {
 	l4NetLB.l4HealthChecks = l4ilb.l4HealthChecks
 
 	// create netlb resources
-	result := l4NetLB.EnsureFrontend(nodeNames, netlbSvc)
+	result := ensureFrontend(l4NetLB, nodeNames, netlbSvc)
 	if result.Error != nil {
 		t.Errorf("Failed to ensure loadBalancer, err %v", result.Error)
 	}
@@ -208,7 +214,7 @@ func ensureLoadBalancer(port int, vals gce.TestClusterValues, fakeGCE *gce.Cloud
 	l4NetLB := NewL4NetLB(svc, fakeGCE, meta.Regional, namer, record.NewFakeRecorder(100))
 	l4NetLB.l4HealthChecks = healthchecks.FakeL4(fakeGCE, &test.FakeRecorderSource{})
 
-	result := l4NetLB.EnsureFrontend(emptyNodes, svc)
+	result := ensureFrontend(l4NetLB, emptyNodes, svc)
 	if result.Error != nil {
 		t.Errorf("Failed to ensure loadBalancer, err %v", result.Error)
 	}
@@ -354,7 +360,7 @@ func TestMetricsForStandardNetworkTier(t *testing.T) {
 	if _, err := test.CreateAndInsertNodes(l4netlb.cloud, nodeNames, vals.ZoneName); err != nil {
 		t.Errorf("Unexpected error when adding nodes %v", err)
 	}
-	result := l4netlb.EnsureFrontend(nodeNames, svc)
+	result := ensureFrontend(l4netlb, nodeNames, svc)
 	if result.Error != nil {
 		t.Errorf("Failed to ensure loadBalancer, err %v", result.Error)
 	}
@@ -363,7 +369,7 @@ func TestMetricsForStandardNetworkTier(t *testing.T) {
 	}
 	// Check that service sync will return error if User Address IP Network Tier mismatch with service Network Tier.
 	svc.ObjectMeta.Annotations[annotations.NetworkTierAnnotationKey] = string(cloud.NetworkTierPremium)
-	result = l4netlb.EnsureFrontend(nodeNames, svc)
+	result = ensureFrontend(l4netlb, nodeNames, svc)
 	if result.Error == nil || !utils.IsNetworkTierError(result.Error) {
 		t.Errorf("LoadBalancer sync should return Network Tier error, err %v", result.Error)
 	}
@@ -379,7 +385,7 @@ func TestMetricsForStandardNetworkTier(t *testing.T) {
 	svc.Spec.LoadBalancerIP = usersIPPremium
 	delete(svc.ObjectMeta.Annotations, annotations.NetworkTierAnnotationKey)
 
-	result = l4netlb.EnsureFrontend(nodeNames, svc)
+	result = ensureFrontend(l4netlb, nodeNames, svc)
 	if result.Error == nil || !utils.IsNetworkTierError(result.Error) {
 		t.Errorf("LoadBalancer sync should return Network Tier error, err %v", result.Error)
 	}
@@ -401,6 +407,7 @@ func createUserStaticIPInStandardTier(fakeGCE *gce.Cloud, region string) {
 	}
 	fakeGCE.ReserveRegionAddress(newAddr, region)
 }
+
 func createUserStaticIPInPremiumTier(fakeGCE *gce.Cloud, region string) {
 	fakeGCE.Compute().(*cloud.MockGCE).MockAddresses.InsertHook = mock.InsertAddressHook
 	fakeGCE.Compute().(*cloud.MockGCE).MockAlphaAddresses.X = mock.AddressAttributes{}

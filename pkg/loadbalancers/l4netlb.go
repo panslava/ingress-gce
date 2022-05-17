@@ -24,7 +24,9 @@ import (
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/client-go/tools/record"
+	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/cloud-provider/service/helpers"
 	"k8s.io/ingress-gce/pkg/annotations"
 	"k8s.io/ingress-gce/pkg/backends"
@@ -90,11 +92,11 @@ func (l4netlb *L4NetLB) createKey(name string) (*meta.Key, error) {
 	return composite.CreateKey(l4netlb.cloud, name, l4netlb.scope)
 }
 
-// EnsureFrontend ensures that all frontend resources for the given loadbalancer service have
+// EnsureFrontendWithExistingFwRule ensures that all frontend resources for the given loadbalancer service have
 // been created. It is health check, firewall rules, backend service and forwarding rule.
 // It returns a LoadBalancerStatus with the updated ForwardingRule IP address.
 // This function does not link instances to Backend Service.
-func (l4netlb *L4NetLB) EnsureFrontend(nodeNames []string, svc *corev1.Service) *L4NetLBSyncResult {
+func (l4netlb *L4NetLB) EnsureFrontendWithExistingFwRule(nodeNames []string, svc *corev1.Service, existingForwardingRule *composite.ForwardingRule) *L4NetLBSyncResult {
 	result := &L4NetLBSyncResult{
 		Annotations: make(map[string]string),
 		StartTime:   time.Now(),
@@ -132,7 +134,7 @@ func (l4netlb *L4NetLB) EnsureFrontend(nodeNames []string, svc *corev1.Service) 
 		return result
 	}
 	result.Annotations[annotations.BackendServiceKey] = name
-	fr, ipAddrType, err := l4netlb.ensureExternalForwardingRule(bs.SelfLink)
+	fr, ipAddrType, err := l4netlb.ensureExternalForwardingRule(bs.SelfLink, existingForwardingRule)
 	if err != nil {
 		// User can misconfigure the forwarding rule if Network Tier will not match service level Network Tier.
 		result.MetricsState.IsUserError = utils.IsUserError(err)
@@ -251,4 +253,47 @@ func (l4netlb *L4NetLB) createFirewalls(name string, nodeNames []string) (string
 		return "", result
 	}
 	return string(protocol), result
+}
+
+func (l4netlb *L4NetLB) ensureTargetPoolDeleted(targetPoolName string) error {
+	return utils.IgnoreHTTPNotFound(l4netlb.cloud.DeleteTargetPool(targetPoolName, l4netlb.cloud.Region()))
+}
+
+// CleanLegacyServiceResources deletes resources, used only by legacy L4 NetLB, based on Target Pools and implemented in service controller
+func (l4netlb *L4NetLB) CleanLegacyServiceResources() error {
+	loadBalancerName := cloudprovider.DefaultLoadBalancerName(l4netlb.Service)
+	serviceName := types.NamespacedName{Namespace: l4netlb.Service.Namespace, Name: l4netlb.Service.Name}
+
+	errs := utilerrors.AggregateGoroutines(
+		func() error {
+			klog.Infof("cleanLegacyServiceResources(%s): Deleting firewall rule.", serviceName.String())
+			return l4netlb.deleteFirewall(gce.MakeFirewallName(loadBalancerName))
+		},
+		func() error {
+			klog.Infof("cleanLegacyServiceResources(%s): Deleting target pool", serviceName.String())
+
+			err := l4netlb.ensureTargetPoolDeleted(loadBalancerName)
+			if err != nil {
+				klog.Errorf("cleanLegacyServiceResources(%v): Failed to delete target pool, got error %s", serviceName.String(), err)
+				return err
+			}
+
+			// Deletion of health checks is allowed only after the TargetPool reference is deleted
+			// Try to delete 2 types of health checks -- used for local traffic policy, and external
+			// They both use legacy naming scheme, so they are not useful for RBS service, and it is safe to delete them
+			deleteInternalHealthCheck := func() error {
+				internalHCName := loadBalancerName
+				return l4netlb.l4HealthChecks.DeleteLegacyHealthCheck(l4netlb.Service, internalHCName, l4netlb.namer.ClusterID(), loadBalancerName)
+			}
+			deleteExternalHealthCheck := func() error {
+				externalHCName := gce.MakeNodesHealthCheckName(l4netlb.namer.ClusterID())
+				return l4netlb.l4HealthChecks.DeleteLegacyHealthCheck(l4netlb.Service, externalHCName, l4netlb.namer.ClusterID(), loadBalancerName)
+			}
+			return utilerrors.AggregateGoroutines(deleteInternalHealthCheck, deleteExternalHealthCheck)
+		},
+	)
+	if errs != nil {
+		return utilerrors.Flatten(errs)
+	}
+	return nil
 }

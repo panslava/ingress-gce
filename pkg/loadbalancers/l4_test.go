@@ -19,10 +19,11 @@ limitations under the License.
 import (
 	"context"
 	"fmt"
-	"k8s.io/ingress-gce/pkg/healthchecks"
 	"reflect"
 	"strings"
 	"testing"
+
+	"k8s.io/ingress-gce/pkg/healthchecks"
 
 	"google.golang.org/api/compute/v1"
 	"k8s.io/ingress-gce/pkg/backends"
@@ -608,7 +609,10 @@ func TestHealthCheckFirewallDeletionWithNetLB(t *testing.T) {
 	l4NetLB.l4HealthChecks = l.l4HealthChecks
 
 	// create netlb resources
-	xlbResult := l4NetLB.EnsureFrontend(nodeNames, netlbSvc)
+
+	frName := l4NetLB.GetFRName()
+	existingForwardingRule := l4NetLB.GetForwardingRule(frName, meta.VersionGA)
+	xlbResult := l4NetLB.EnsureFrontendWithExistingFwRule(nodeNames, netlbSvc, existingForwardingRule)
 	if xlbResult.Error != nil {
 		t.Errorf("Failed to ensure loadBalancer, err %v", xlbResult.Error)
 	}
