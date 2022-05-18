@@ -46,6 +46,7 @@ type Instances struct {
 	namer              namer.BackendNamer
 	recorder           record.EventRecorder
 	instanceLinkFormat string
+	maxIGSize          int
 }
 
 type recorderSource interface {
@@ -60,6 +61,7 @@ type NodePoolConfig struct {
 	Recorders  recorderSource
 	BasePath   string
 	ZoneLister ZoneLister
+	MaxIGSize  int
 }
 
 // NewNodePool creates a new node pool using NodePoolConfig.
@@ -70,6 +72,7 @@ func NewNodePool(config NodePoolConfig) NodePool {
 		recorder:           config.Recorders.Recorder(""), // No namespace
 		instanceLinkFormat: config.BasePath + "zones/%s/instances/%s",
 		ZoneLister:         config.ZoneLister,
+		maxIGSize:          config.MaxIGSize,
 	}
 }
 

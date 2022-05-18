@@ -51,6 +51,7 @@ func newTestRegionalIgLinker(fakeGCE *gce.Cloud, backendPool *Backends, l4Namer 
 		Recorders:  &test.FakeRecorderSource{},
 		BasePath:   utils.GetBasePath(fakeGCE),
 		ZoneLister: fakeZL,
+		MaxIGSize:  1000,
 	})
 
 	(fakeGCE.Compute().(*cloud.MockGCE)).MockRegionBackendServices.UpdateHook = mock.UpdateRegionBackendServiceHook

@@ -53,6 +53,7 @@ func newTestJig(fakeGCE *gce.Cloud) *Jig {
 		Recorders:  &test.FakeRecorderSource{},
 		BasePath:   utils.GetBasePath(fakeGCE),
 		ZoneLister: fakeZL,
+		MaxIGSize:  1000,
 	})
 
 	// Add standard hooks for mocking update calls. Each test can set a different update hook if it chooses to.

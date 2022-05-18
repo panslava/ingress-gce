@@ -34,25 +34,28 @@ const (
 
 var defaultNamer = namer.NewNamer("uid1", "fw1")
 
-func newNodePool(f *FakeInstanceGroups, zone string) NodePool {
+func newNodePool(f *FakeInstanceGroups, zone string, maxIGSize int) NodePool {
 	pool := NewNodePool(NodePoolConfig{
 		Cloud:      f,
 		Namer:      defaultNamer,
 		Recorders:  &test.FakeRecorderSource{},
 		BasePath:   basePath,
 		ZoneLister: &FakeZoneLister{[]string{zone}},
+		MaxIGSize:  maxIGSize,
 	})
 	return pool
 }
 
 func TestNodePoolSync(t *testing.T) {
+	maxIGSize := 1000
+
 	ig := &compute.InstanceGroup{Name: defaultNamer.InstanceGroup()}
 	fakeIGs := NewFakeInstanceGroups(map[string]IGsToInstances{
 		defaultZone: {
 			ig: sets.NewString("n1", "n2"),
 		},
-	})
-	pool := newNodePool(fakeIGs, defaultZone)
+	}, maxIGSize)
+	pool := newNodePool(fakeIGs, defaultZone, maxIGSize)
 	pool.EnsureInstanceGroupsAndPorts(defaultNamer.InstanceGroup(), []int64{80})
 
 	// KubeNodes: n1
@@ -82,8 +85,8 @@ func TestNodePoolSync(t *testing.T) {
 		defaultZone: {
 			ig: sets.NewString("n1"),
 		},
-	})
-	pool = newNodePool(fakeIGs, defaultZone)
+	}, maxIGSize)
+	pool = newNodePool(fakeIGs, defaultZone, maxIGSize)
 	pool.EnsureInstanceGroupsAndPorts(defaultNamer.InstanceGroup(), []int64{80})
 
 	fakeIGs.calls = []int{}
@@ -110,8 +113,8 @@ func TestNodePoolSync(t *testing.T) {
 		defaultZone: {
 			ig: sets.NewString("n1", "n2"),
 		},
-	})
-	pool = newNodePool(fakeIGs, defaultZone)
+	}, maxIGSize)
+	pool = newNodePool(fakeIGs, defaultZone, maxIGSize)
 	pool.EnsureInstanceGroupsAndPorts(defaultNamer.InstanceGroup(), []int64{80})
 
 	fakeIGs.calls = []int{}
@@ -124,12 +127,13 @@ func TestNodePoolSync(t *testing.T) {
 }
 
 func TestSetNamedPorts(t *testing.T) {
+	maxIGSize := 1000
 	fakeIGs := NewFakeInstanceGroups(map[string]IGsToInstances{
 		defaultZone: {
 			&compute.InstanceGroup{Name: "ig"}: sets.NewString("ig"),
 		},
-	})
-	pool := newNodePool(fakeIGs, defaultZone)
+	}, maxIGSize)
+	pool := newNodePool(fakeIGs, defaultZone, maxIGSize)
 
 	testCases := []struct {
 		activePorts   []int64
@@ -178,11 +182,12 @@ func TestSetNamedPorts(t *testing.T) {
 }
 
 func TestGetInstanceReferences(t *testing.T) {
+	maxIGSize := 1000
 	pool := newNodePool(NewFakeInstanceGroups(map[string]IGsToInstances{
 		defaultZone: {
 			&compute.InstanceGroup{Name: "ig"}: sets.NewString("ig"),
 		},
-	}), defaultZone)
+	}, maxIGSize), defaultZone, maxIGSize)
 	instances := pool.(*Instances)
 
 	nodeNames := []string{"node-1", "node-2", "node-3", "node-4.region.zone"}

@@ -28,12 +28,11 @@ import (
 	"testing"
 	"time"
 
-	"google.golang.org/api/googleapi"
-
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/mock"
 	ga "google.golang.org/api/compute/v1"
+	"google.golang.org/api/googleapi"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -226,6 +225,7 @@ func buildContext(vals gce.TestClusterValues) *ingctx.ControllerContext {
 		Namespace:    v1.NamespaceAll,
 		ResyncPeriod: 1 * time.Minute,
 		NumL4Workers: 5,
+		MaxIGSize:    1000,
 	}
 	return ingctx.NewControllerContext(nil, kubeClient, nil, nil, nil, nil, nil, fakeGCE, namer, "" /*kubeSystemUID*/, ctxConfig)
 }

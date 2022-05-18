@@ -36,9 +36,10 @@ func NewEmptyFakeInstanceGroups() *FakeInstanceGroups {
 }
 
 // NewFakeInstanceGroups creates a new FakeInstanceGroups.
-func NewFakeInstanceGroups(zonesToIGsToInstances map[string]IGsToInstances) *FakeInstanceGroups {
+func NewFakeInstanceGroups(zonesToIGsToInstances map[string]IGsToInstances, maxIGSize int) *FakeInstanceGroups {
 	return &FakeInstanceGroups{
 		zonesToIGsToInstances: zonesToIGsToInstances,
+		maxIGSize:             maxIGSize,
 	}
 }
 
@@ -67,6 +68,7 @@ type FakeInstanceGroups struct {
 	getResult             *compute.InstanceGroup
 	calls                 []int
 	zonesToIGsToInstances map[string]IGsToInstances
+	maxIGSize             int
 }
 
 // getInstanceGroup implements fake getting ig by name in zone

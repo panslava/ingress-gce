@@ -133,6 +133,7 @@ type ControllerContextConfig struct {
 	ASMConfigMapNamespace string
 	ASMConfigMapName      string
 	EndpointSlicesEnabled bool
+	MaxIGSize             int
 }
 
 // NewControllerContext returns a new shared set of informers.
@@ -212,6 +213,7 @@ func NewControllerContext(
 		Recorders:  context,
 		BasePath:   utils.GetBasePath(context.Cloud),
 		ZoneLister: context.Translator,
+		MaxIGSize:  config.MaxIGSize,
 	})
 
 	return context

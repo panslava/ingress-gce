@@ -59,6 +59,7 @@ func TestLink(t *testing.T) {
 		Recorders:  &test.FakeRecorderSource{},
 		BasePath:   utils.GetBasePath(fakeGCE),
 		ZoneLister: fakeZL,
+		MaxIGSize:  1000,
 	})
 	linker := newTestIGLinker(fakeGCE, fakeNodePool)
 
@@ -96,6 +97,7 @@ func TestLinkWithCreationModeError(t *testing.T) {
 		Recorders:  &test.FakeRecorderSource{},
 		BasePath:   utils.GetBasePath(fakeGCE),
 		ZoneLister: fakeZL,
+		MaxIGSize:  1000,
 	})
 	linker := newTestIGLinker(fakeGCE, fakeNodePool)
 

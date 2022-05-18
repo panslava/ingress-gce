@@ -81,6 +81,7 @@ func newLoadBalancerController() *LoadBalancerController {
 		Recorders:  &test.FakeRecorderSource{},
 		BasePath:   utils.GetBasePath(fakeGCE),
 		ZoneLister: fakeZL,
+		MaxIGSize:  1000,
 	})
 	lbc.l7Pool = loadbalancers.NewLoadBalancerPool(fakeGCE, namer, events.RecorderProducerMock{}, namer_util.NewFrontendNamerFactory(namer, ""))
 
