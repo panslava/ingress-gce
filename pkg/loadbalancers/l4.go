@@ -74,7 +74,7 @@ func NewL4Handler(service *corev1.Service, cloud *gce.Cloud, scope meta.KeyType,
 		namer:          namer,
 		recorder:       recorder,
 		Service:        service,
-		l4HealthChecks: healthchecks_l4.GetInstance(),
+		l4HealthChecks: healthchecks_l4.NewL4ILBHealthChecks(cloud, service, recorder, namer),
 	}
 	l.NamespacedName = types.NamespacedName{Name: service.Name, Namespace: service.Namespace}
 	l.backendPool = backends.NewPool(l.cloud, l.namer)
@@ -138,19 +138,12 @@ func (l *L4) EnsureInternalLoadBalancerDeleted(svc *corev1.Service) *L4ILBSyncRe
 		result.Error = err
 	}
 
-	// Delete healthcheck
-	// We don't delete health check during service update so
-	// it is possible that there might be some health check leak
-	// when externalTrafficPolicy is changed from Local to Cluster and a new health check was created.
-	// When service is deleted we need to check both health checks shared and non-shared
-	// and delete them if needed.
-	for _, isShared := range []bool{true, false} {
-		resourceInError, err := l.l4HealthChecks.DeleteHealthCheck(svc, l.namer, isShared, meta.Global, utils.ILB)
-		if err != nil {
-			result.GCEResourceInError = resourceInError
-			result.Error = err
-		}
+	err = l.l4HealthChecks.DeleteHealthChecksWithFirewalls()
+	if hcError, ok := err.(*healthchecks_l4.L4HealthCheckError); ok {
+		result.GCEResourceInError = hcError.GCEResourceInError
+		result.Error = hcError
 	}
+
 	return result
 }
 
@@ -203,19 +196,41 @@ func (l *L4) EnsureInternalLoadBalancer(nodeNames []string, svc *corev1.Service)
 	options := getILBOptions(l.Service)
 
 	// create healthcheck
-	sharedHC := !helpers.RequestsOnlyLocalTraffic(l.Service)
-	hcResult := l.l4HealthChecks.EnsureL4HealthCheck(l.Service, l.namer, sharedHC, meta.Global, utils.ILB, nodeNames)
-
-	if hcResult.Err != nil {
-		result.GCEResourceInError = hcResult.GceResourceInError
-		result.Error = hcResult.Err
+	hcLink, hcErr := l.l4HealthChecks.EnsureHealthCheckWithFirewall(nodeNames)
+	if hcError, ok := hcErr.(*healthchecks_l4.L4HealthCheckError); ok {
+		result.GCEResourceInError = hcError.GCEResourceInError
+		result.Error = fmt.Errorf("Failed to ensure health check for service %s/%s, error %w", svc.Namespace, svc.Name, hcError)
 		return result
 	}
-	result.Annotations[annotations.HealthcheckKey] = hcResult.HCName
+
+	result.Annotations[annotations.HealthcheckKey] = l.l4HealthChecks.GetHealthCheckName()
+	result.Annotations[annotations.FirewallRuleForHealthcheckKey] = l.l4HealthChecks.GetHealthCheckFirewallName()
 
 	servicePorts := l.Service.Spec.Ports
 	portRanges := utils.GetServicePortRanges(servicePorts)
 	protocol := utils.GetProtocol(servicePorts)
+
+	// ensure firewalls
+	sourceRanges, err := helpers.GetLoadBalancerSourceRanges(l.Service)
+	if err != nil {
+		result.Error = err
+		return result
+	}
+	// Add firewall rule for ILB traffic to nodes
+	nodesFWRParams := firewalls.FirewallParams{
+		PortRanges:   portRanges,
+		SourceRanges: sourceRanges.StringSlice(),
+		Protocol:     string(protocol),
+		Name:         name,
+		NodeNames:    nodeNames,
+	}
+
+	if err := firewalls.EnsureL4LBFirewallForNodes(l.Service, &nodesFWRParams, l.cloud, l.recorder); err != nil {
+		result.GCEResourceInError = annotations.FirewallRuleResource
+		result.Error = err
+		return result
+	}
+	result.Annotations[annotations.FirewallRuleKey] = name
 
 	// Check if protocol has changed for this service. In this case, forwarding rule should be deleted before
 	// the backend service can be updated.
@@ -233,7 +248,7 @@ func (l *L4) EnsureInternalLoadBalancer(nodeNames []string, svc *corev1.Service)
 	}
 
 	// ensure backend service
-	bs, err := l.backendPool.EnsureL4BackendService(name, hcResult.HCLink, string(protocol), string(l.Service.Spec.SessionAffinity),
+	bs, err := l.backendPool.EnsureL4BackendService(name, hcLink, string(protocol), string(l.Service.Spec.SessionAffinity),
 		string(cloud.SchemeInternal), l.NamespacedName, meta.VersionGA)
 	if err != nil {
 		result.GCEResourceInError = annotations.BackendServiceResource
@@ -255,31 +270,6 @@ func (l *L4) EnsureInternalLoadBalancer(nodeNames []string, svc *corev1.Service)
 	} else {
 		result.Annotations[annotations.UDPForwardingRuleKey] = frName
 	}
-
-	// ensure firewalls
-	sourceRanges, err := helpers.GetLoadBalancerSourceRanges(l.Service)
-	if err != nil {
-		result.Error = err
-		return result
-	}
-	// Add firewall rule for ILB traffic to nodes
-	nodesFWRParams := firewalls.FirewallParams{
-		PortRanges:        portRanges,
-		SourceRanges:      sourceRanges.StringSlice(),
-		DestinationRanges: []string{fr.IPAddress},
-		Protocol:          string(protocol),
-		Name:              name,
-		NodeNames:         nodeNames,
-		L4Type:            utils.ILB,
-	}
-
-	if err := firewalls.EnsureL4LBFirewallForNodes(l.Service, &nodesFWRParams, l.cloud, l.recorder); err != nil {
-		result.GCEResourceInError = annotations.FirewallRuleResource
-		result.Error = err
-		return result
-	}
-	result.Annotations[annotations.FirewallRuleKey] = name
-	result.Annotations[annotations.FirewallRuleForHealthcheckKey] = hcResult.HCFirewallRuleName
 
 	result.MetricsState.InSuccess = true
 	if options.AllowGlobalAccess {

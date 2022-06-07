@@ -27,13 +27,11 @@ import (
 	"testing"
 	"time"
 
-	"google.golang.org/api/googleapi"
-	"k8s.io/ingress-gce/pkg/healthchecks_l4"
-
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/mock"
 	ga "google.golang.org/api/compute/v1"
+	"google.golang.org/api/googleapi"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -241,7 +239,6 @@ func newL4NetLBServiceController() *L4NetLBController {
 	for _, n := range nodes {
 		ctx.NodeInformer.GetIndexer().Add(n)
 	}
-	healthchecks_l4.Fake(ctx.Cloud, ctx)
 	return NewL4NetLBController(ctx, stopCh)
 }
 
@@ -866,15 +863,20 @@ func TestHealthCheckWhenExternalTrafficPolicyWasUpdated(t *testing.T) {
 	}
 
 	// Update ExternalTrafficPolicy to Local check if nonshared HC was created
-	hcNameNonShared, _ := lc.namer.L4HealthCheck(svc.Namespace, svc.Name, false)
+	hcNameNonShared := lc.namer.LocalPolicyHealthCheck(svc.Namespace, svc.Name)
 	err = updateAndAssertExternalTrafficPolicy(newSvc, lc, v1.ServiceExternalTrafficPolicyTypeLocal, hcNameNonShared)
 	if err != nil {
 		t.Errorf("Error asserthing nonshared health check %v", err)
 	}
 	// delete shared health check if is created, update service to Cluster and
 	// check that non-shared health check was created
-	hcNameShared, _ := lc.namer.L4HealthCheck(svc.Namespace, svc.Name, true)
-	healthchecks_l4.Fake(lc.ctx.Cloud, lc.ctx).DeleteHealthCheck(svc, lc.namer, true, meta.Regional, utils.XLB)
+	hcNameShared := lc.namer.ClusterPolicyHealthCheck()
+	hckey, _ := composite.CreateKey(lc.ctx.Cloud, hcNameShared, meta.Regional)
+
+	err = composite.DeleteHealthCheck(lc.ctx.Cloud, hckey, meta.VersionGA)
+	if err != nil {
+		t.Errorf("composite.DeleteHealthCheck(_, %v, %s) returned erorr %v, want nil", hckey, meta.VersionGA, err)
+	}
 	// Update ExternalTrafficPolicy to Cluster check if shared HC was created
 	err = updateAndAssertExternalTrafficPolicy(newSvc, lc, v1.ServiceExternalTrafficPolicyTypeCluster, hcNameShared)
 	if err != nil {

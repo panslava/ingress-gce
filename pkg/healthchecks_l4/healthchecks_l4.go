@@ -23,11 +23,9 @@ import (
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/cloud-provider/service/helpers"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/ingress-gce/pkg/annotations"
 	"k8s.io/ingress-gce/pkg/composite"
-	"k8s.io/ingress-gce/pkg/events"
 	"k8s.io/ingress-gce/pkg/firewalls"
 	"k8s.io/ingress-gce/pkg/utils"
 	"k8s.io/ingress-gce/pkg/utils/namer"
@@ -35,305 +33,307 @@ import (
 	"k8s.io/legacy-cloud-providers/gce"
 )
 
-const (
-	// L4 Load Balancer parameters
-	gceHcCheckIntervalSeconds = int64(8)
-	gceHcTimeoutSeconds       = int64(1)
-	// Start sending requests as soon as one healthcheck succeeds.
-	gceHcHealthyThreshold = int64(1)
-	// Defaults to 3 * 8 = 24 seconds before the LB will steer traffic away.
-	gceHcUnhealthyThreshold = int64(3)
-)
-
 var (
-	// instanceLock to prevent duplicate initialization.
-	instanceLock = &sync.Mutex{}
-	// instance is a singleton instance, created by Initialize
-	instance *l4HealthChecks
+	sharedLock = &sync.Mutex{}
 )
 
 type l4HealthChecks struct {
-	// sharedResourceLock serializes operations on the healthcheck and firewall
-	// resources shared across multiple Services.
-	hcProvider          HealthChecksProvider
-	sharedResourcesLock sync.Mutex
-	cloud               *gce.Cloud
-	recorderFactory     events.RecorderProducer
+	hcProvider HealthChecksProvider
+	mu         *sync.Mutex
+	cloud      *gce.Cloud
+	namer      namer.L4ResourcesNamer
+	recorder   record.EventRecorder
+	service    *corev1.Service
 }
 
-// Initialize creates singleton instance, must be run before GetInstance() func
-func Initialize(cloud *gce.Cloud, recorderFactory events.RecorderProducer) {
-	instanceLock.Lock()
-	defer instanceLock.Unlock()
+func newL4HealthChecks(lock *sync.Mutex, cloud *gce.Cloud, service *corev1.Service, recorder record.EventRecorder, namer namer.L4ResourcesNamer, l4Type utils.L4LBType) *l4HealthChecks {
+	//var scope meta.KeyType = meta.Global
+	//
+	//if l4Type == utils.XLB {
+	//	scope = meta.Regional
+	//}
+	//
+	//isClusterTrafficPolicy := !helpers.RequestsOnlyLocalTraffic(service)
+	//
+	//var path, hcName, hcFWName string
+	//var port int32
+	//
+	//if isClusterTrafficPolicy {
+	//	path = gce.GetNodesHealthCheckPath()
+	//	port = gce.GetNodesHealthCheckPort()
+	//
+	//	hcName = namer.ClusterPolicyHealthCheck()
+	//	hcFWName = namer.ClusterPolicyHealthCheckFirewallRule()
+	//} else {
+	//	path, port = helpers.GetServiceHealthCheckPathPort(service)
+	//
+	//	hcName = namer.LocalPolicyHealthCheck(service.Namespace, service.Name)
+	//	hcFWName = namer.LocalPolicyHealthCheckFirewallRule(service.Namespace, service.Name)
+	//}
+	//
+	//hcParams := &l4healthCheckParams{
+	//	l4Type:                 l4Type,
+	//	scope:                  scope,
+	//	isClusterTrafficPolicy: isClusterTrafficPolicy,
+	//	path:                   path,
+	//	port:                   port,
+	//	serviceName:            service.Name,
+	//	serviceNamespace:       service.Namespace,
+	//	healthCheckName:        hcName,
+	//}
 
-	if instance != nil {
-		klog.Error("Multiple L4 Healthchecks initialization attempts")
-		return
+	return &l4HealthChecks{
+		hcProvider: NewHealthChecks(cloud, meta.VersionGA),
+		mu:         lock,
+		cloud:      cloud,
+		namer:      namer,
+		recorder:   recorder,
+		service:    service,
 	}
-
-	instance = &l4HealthChecks{
-		cloud:           cloud,
-		recorderFactory: recorderFactory,
-		hcProvider:      NewHealthChecks(cloud, meta.VersionGA),
-	}
-	klog.V(3).Infof("Initialized L4 Healthchecks")
 }
 
-// Fake creates instance of l4HealthChecks. Use for test only.
-func Fake(cloud *gce.Cloud, recorderFactory events.RecorderProducer) *l4HealthChecks {
-	instance = &l4HealthChecks{
-		cloud:           cloud,
-		recorderFactory: recorderFactory,
-		hcProvider:      NewHealthChecks(cloud, meta.VersionGA),
-	}
-	return instance
+func NewL4ILBHealthChecks(cloud *gce.Cloud, service *corev1.Service, recorder record.EventRecorder, namer namer.L4ResourcesNamer) *l4HealthChecks {
+	return newL4HealthChecks(sharedLock, cloud, service, recorder, namer, utils.ILB)
 }
 
-// GetInstance returns singleton instance, must be run after Initialize
-func GetInstance() *l4HealthChecks {
-	return instance
+func NewL4ELBHealthChecks(cloud *gce.Cloud, service *corev1.Service, recorder record.EventRecorder, namer namer.L4ResourcesNamer) *l4HealthChecks {
+	return newL4HealthChecks(sharedLock, cloud, service, recorder, namer, utils.XLB)
 }
 
-// EnsureL4HealthCheck and firewall rules exist for the L4
-// LoadBalancer Service.
-//
-// The healthcheck and firewall will be shared between different K8s
-// Services for ExternalTrafficPolicy = Cluster, as the same
-// configuration is used across all Services of this type.
-//
-// Firewall rules are always created at in the Global scope (vs
-// Regional). This means that one Firewall rule is created for
-// Services of different scope (Global vs Regional).
+func (l4hc *l4HealthChecks) GetHealthCheckName() string {
+	return l4hc.hcParams.healthCheckName
+}
 
-func (l4hc *l4HealthChecks) EnsureL4HealthCheck(svc *corev1.Service, namer namer.L4ResourcesNamer, sharedHC bool, scope meta.KeyType, l4Type utils.L4LBType, nodeNames []string) *EnsureL4HealthCheckResult {
-	namespacedName := types.NamespacedName{Name: svc.Name, Namespace: svc.Namespace}
+func (l4hc *l4HealthChecks) GetHealthCheckFirewallName() string {
+	return l4hc.hcFWName
+}
 
-	hcName, hcFwName := namer.L4HealthCheck(svc.Namespace, svc.Name, sharedHC)
-	hcPath, hcPort := helpers.GetServiceHealthCheckPathPort(svc)
-	klog.V(3).Infof("Ensuring L4 healthcheck: %s and firewall rule %s from service %s, shared: %v.", hcName, hcFwName, namespacedName.String(), sharedHC)
+func (l4hc *l4HealthChecks) isSharedHealthCheck() bool {
+	return l4hc.hcParams.isClusterTrafficPolicy
+}
 
-	if sharedHC {
-		hcPath, hcPort = gce.GetNodesHealthCheckPath(), gce.GetNodesHealthCheckPort()
-		// We need to acquire a controller-wide mutex to ensure that in the case of a healthcheck shared between loadbalancers that the sync of the GCE resources is not performed in parallel.
-		l4hc.sharedResourcesLock.Lock()
-		defer l4hc.sharedResourcesLock.Unlock()
+func (l4hc *l4HealthChecks) EnsureHealthCheckWithFirewall(nodeNames []string) (string, error) {
+	if l4hc.isSharedHealthCheck() {
+		l4hc.mu.Lock()
+		defer l4hc.mu.Unlock()
 	}
-	klog.V(3).Infof("L4 Healthcheck %s, path: %q, port %d", hcName, hcPath, hcPort)
 
-	_, hcLink, err := l4hc.ensureL4HealthCheckInternal(hcName, namespacedName, sharedHC, hcPath, hcPort, scope, l4Type)
+	klog.V(3).Infof("Creating health check for service %s/%s.", l4hc.service.Namespace, l4hc.service.Name)
+
+	hc, err := l4hc.ensureHealthCheck()
 	if err != nil {
-		return &EnsureL4HealthCheckResult{
-			GceResourceInError: annotations.HealthcheckResource,
-			Err:                err,
+		return "", &L4HealthCheckError{
+			Err:                fmt.Errorf("l4hc.ensureHealthCheck() returned error %w, want nil", err),
+			GCEResourceInError: annotations.HealthcheckResource,
 		}
 	}
 
-	klog.V(3).Infof("Healthcheck created, ensuring firewall rule %s", hcFwName)
-	err = l4hc.ensureFirewall(svc, hcFwName, hcPort, sharedHC, nodeNames)
+	klog.V(3).Infof("Creating health check firewall for service %s/%s.", l4hc.service.Namespace, l4hc.service.Name)
+	err = l4hc.ensureHealthCheckFirewall(nodeNames)
 	if err != nil {
-		return &EnsureL4HealthCheckResult{
-			GceResourceInError: annotations.HealthcheckResource,
-			Err:                err,
+		return "", &L4HealthCheckError{
+			Err:                fmt.Errorf("l4hc.ensureHealthCheckFirewall(%v) returned error %w, want nil", nodeNames, err),
+			GCEResourceInError: annotations.FirewallForHealthcheckResource,
 		}
 	}
-	return &EnsureL4HealthCheckResult{
-		HCName:             hcName,
-		HCLink:             hcLink,
-		HCFirewallRuleName: hcFwName,
-	}
+
+	return hc.SelfLink, nil
 }
 
-// DeleteHealthCheck deletes health check (and firewall rule) for l4 service. Checks if shared resources are safe to delete.
-func (l4hc *l4HealthChecks) DeleteHealthCheck(svc *corev1.Service, namer namer.L4ResourcesNamer, sharedHC bool, scope meta.KeyType, l4Type utils.L4LBType) (string, error) {
-
-	hcName, hcFwName := namer.L4HealthCheck(svc.Namespace, svc.Name, sharedHC)
-	namespacedName := types.NamespacedName{Name: svc.Name, Namespace: svc.Namespace}
-	klog.V(3).Infof("Trying to delete L4 healthcheck: %s and firewall rule %s from service %s, shared: %v", hcName, hcFwName, namespacedName.String(), sharedHC)
-	if sharedHC {
-		// We need to acquire a controller-wide mutex to ensure that in the case of a healthcheck shared between loadbalancers that the sync of the GCE resources is not performed in parallel.
-		l4hc.sharedResourcesLock.Lock()
-		defer l4hc.sharedResourcesLock.Unlock()
-	}
-
-	err := l4hc.hcProvider.Delete(hcName, scope)
+func (l4hc *l4HealthChecks) ensureHealthCheck() (*composite.HealthCheck, error) {
+	existingHC, err := l4hc.getExistingHealthCheck()
 	if err != nil {
-		// Ignore deletion error due to health check in use by another resource.
-		if !utils.IsInUsedByError(err) {
-			klog.Errorf("Failed to delete healthcheck for service %s - %v", namespacedName.String(), err)
-			return annotations.HealthcheckResource, err
-		}
-		klog.V(2).Infof("Failed to delete healthcheck %s: shared health check in use.", hcName)
-		return "", nil
-	}
-	// Health check deleted, now delete the firewall rule
-	return l4hc.deleteHealthCheckFirewall(svc, hcName, hcFwName, sharedHC, l4Type)
-}
-
-func (l4hc *l4HealthChecks) ensureL4HealthCheckInternal(hcName string, svcName types.NamespacedName, shared bool, path string, port int32, scope meta.KeyType, l4Type utils.L4LBType) (*composite.HealthCheck, string, error) {
-	hc, err := l4hc.hcProvider.Get(hcName, scope)
-	if err != nil {
-		return nil, "", err
+		return nil, fmt.Errorf("getExistingHealthCheck() returned error %w, want nil", err)
 	}
 
-	var region string
-	if scope == meta.Regional {
-		region = l4hc.cloud.Region()
-	}
-	expectedHC := newL4HealthCheck(hcName, svcName, shared, path, port, l4Type, scope, region)
-
-	if hc == nil {
-		// Create the healthcheck
-		klog.V(2).Infof("Creating healthcheck %s for service %s, shared = %v. Expected healthcheck: %v", hcName, svcName, shared, expectedHC)
-		err = l4hc.hcProvider.Create(expectedHC)
+	if existingHC == nil {
+		hc, err := l4hc.createNewHealthCheck()
 		if err != nil {
-			return nil, "", err
+			return nil, fmt.Errorf("createNewHealthCheck() returned error %w, want nil", err)
 		}
-		selfLink, err := l4hc.hcProvider.SelfLink(expectedHC.Name, scope)
-		if err != nil {
-			return nil, "", err
-		}
-		return expectedHC, selfLink, nil
+
+		return hc, nil
 	}
-	selfLink := hc.SelfLink
-	if !needToUpdateHealthChecks(hc, expectedHC) {
+
+	return l4hc.updateHealthCheck(existingHC)
+}
+
+func (l4hc *l4HealthChecks) getExistingHealthCheck() (*composite.HealthCheck, error) {
+	return l4hc.hcProvider.Get(l4hc.hcParams.healthCheckName, l4hc.hcParams.scope)
+}
+
+func (l4hc *l4HealthChecks) createNewHealthCheck() (*composite.HealthCheck, error) {
+	compositeHC := newCompositeL4HealthCheck(l4hc.cloud, l4hc.hcParams)
+
+	err := l4hc.hcProvider.Create(compositeHC)
+	if err != nil {
+		return nil, fmt.Errorf("l4hc.Create(%v) returned error %w, want nil", compositeHC, err)
+	}
+	return compositeHC, nil
+}
+
+func (l4hc *l4HealthChecks) updateHealthCheck(existingHC *composite.HealthCheck) (*composite.HealthCheck, error) {
+	expectedHC := newCompositeL4HealthCheck(l4hc.cloud, l4hc.hcParams)
+
+	if !needToUpdateHealthChecks(existingHC, expectedHC) {
 		// nothing to do
-		klog.V(3).Infof("Healthcheck %v already exists", hcName)
-		return hc, selfLink, nil
+		klog.V(3).Infof("Healthcheck %v does not require update, skipping", existingHC.Name)
+		return existingHC, nil
 	}
-	mergeHealthChecks(hc, expectedHC)
-	klog.V(2).Infof("Updating healthcheck %s for service %s, updated healthcheck: %v", hcName, svcName, expectedHC)
-	err = l4hc.hcProvider.Update(expectedHC.Name, scope, expectedHC)
+
+	mergeHealthChecks(existingHC, expectedHC)
+	klog.V(2).Infof("Updating healthcheck %s, updated healthcheck: %v", existingHC.Name, expectedHC)
+	err := l4hc.hcProvider.Update(existingHC.Name, existingHC.Scope, expectedHC)
 	if err != nil {
-		return nil, selfLink, err
+		return nil, fmt.Errorf("l4hc.Update(%s, %s, %v) returned error %w, want nil", existingHC.Name, existingHC.Scope, expectedHC, err)
 	}
-	return expectedHC, selfLink, err
+	return expectedHC, nil
 }
 
-// ensureFirewall rule for `svc`.
-//
-// L4 ILB and L4 NetLB Services with ExternalTrafficPolicy=Cluster use the same firewall
-// rule at global scope.
-func (l4hc *l4HealthChecks) ensureFirewall(svc *corev1.Service, hcFwName string, hcPort int32, sharedHC bool, nodeNames []string) error {
-	// Add firewall rule for healthchecks to nodes
+func (l4hc *l4HealthChecks) ensureHealthCheckFirewall(nodeNames []string) error {
 	hcFWRParams := firewalls.FirewallParams{
-		PortRanges:   []string{strconv.Itoa(int(hcPort))},
+		PortRanges:   []string{strconv.Itoa(int(l4hc.hcParams.port))},
 		SourceRanges: gce.L4LoadBalancerSrcRanges(),
 		Protocol:     string(corev1.ProtocolTCP),
-		Name:         hcFwName,
+		Name:         l4hc.hcFWName,
 		NodeNames:    nodeNames,
 	}
-	return firewalls.EnsureL4LBFirewallForHc(svc, sharedHC, &hcFWRParams, l4hc.cloud, l4hc.recorderFactory.Recorder(svc.Namespace))
+	err := firewalls.EnsureL4LBFirewallForHc(l4hc.service, l4hc.isSharedHealthCheck(), &hcFWRParams, l4hc.cloud, l4hc.recorder)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
-func (l4hc *l4HealthChecks) deleteHealthCheckFirewall(svc *corev1.Service, hcName, hcFwName string, sharedHC bool, l4Type utils.L4LBType) (string, error) {
-	namespacedName := types.NamespacedName{Name: svc.Name, Namespace: svc.Namespace}
+// DeleteHealthChecksWithFirewalls deletes both cluster and local health checks with firewall
+//
+// We don't delete health check during service update,
+// so it is possible that there might be some health check leak
+// when externalTrafficPolicy is changed from Local to Cluster and new a health check was created.
+// When service is deleted we need to check both health checks shared and non-shared
+// and delete them if needed.
+func (l4hc *l4HealthChecks) DeleteHealthChecksWithFirewalls() error {
+	err := l4hc.safeDeleteClusterHealthCheckWithFirewall()
 
-	safeToDelete, err := l4hc.healthCheckFirewallSafeToDelete(hcName, sharedHC, l4Type)
-	if err != nil {
-		klog.Errorf("Failed to delete health check firewall rule %s for service %s - %v", hcFwName, namespacedName.String(), err)
-		return annotations.HealthcheckResource, err
-	}
-	if !safeToDelete {
-		klog.V(3).Infof("Failed to delete health check firewall rule %s: health check in use.", hcName)
-		return "", nil
-	}
-	klog.V(3).Infof("Deleting healthcheck firewall rule named: %s", hcFwName)
-	// Delete healthcheck firewall rule if no healthcheck uses the firewall rule.
-	err = l4hc.deleteFirewall(hcFwName, svc)
-	if err != nil {
-		klog.Errorf("Failed to delete firewall rule %s for loadbalancer service %s, err %v", hcFwName, namespacedName.String(), err)
-		return annotations.FirewallForHealthcheckResource, err
-	}
-	return "", nil
+	err = l4hc.deleteLocalHealthCheckWithFirewall()
+
+	return err
 }
 
-func (l4hc *l4HealthChecks) healthCheckFirewallSafeToDelete(hcName string, sharedHC bool, l4Type utils.L4LBType) (bool, error) {
-	if !sharedHC {
-		return true, nil
-	}
-	var scopeToCheck meta.KeyType
-	scopeToCheck = meta.Regional
-	if l4Type == utils.XLB {
-		scopeToCheck = meta.Global
+func (l4hc *l4HealthChecks) safeDeleteClusterHealthCheckWithFirewall() error {
+	l4hc.mu.Lock()
+	defer l4hc.mu.Unlock()
+
+	err := l4hc.deleteClusterHealthCheck()
+	if err != nil {
+		if utils.IsInUsedByError(err) {
+			klog.V(3).Infof("Cluster health check for service %s/%s is shared and in use, skipping deletion", l4hc.service.Namespace, l4hc.service.Name)
+			return nil
+		}
+		return &L4HealthCheckError{
+			Err:                fmt.Errorf("l4hc.deleteClusterHealthCheck() returned error %w, want nil", err),
+			GCEResourceInError: annotations.HealthcheckResource,
+		}
 	}
 
-	hc, err := l4hc.hcProvider.Get(hcName, scopeToCheck)
+	err = l4hc.safeDeleteClusterHealthCheckFirewall()
 	if err != nil {
-		return false, fmt.Errorf("l4hc.hcProvider.Get(%s, %s) returned error %w, want nil", hcName, scopeToCheck, err)
+		return &L4HealthCheckError{
+			Err:                fmt.Errorf("l4hc.safeDeleteClusterHealthCheckFirewall() returned error %v, want nil", err),
+			GCEResourceInError: annotations.FirewallForHealthcheckResource,
+		}
+	}
+
+	return nil
+}
+
+func (l4hc *l4HealthChecks) deleteLocalHealthCheckWithFirewall() error {
+	err := l4hc.deleteLocalHealthCheck()
+	if err != nil {
+		return &L4HealthCheckError{
+			Err:                fmt.Errorf("l4hc.deleteLocalHealthCheck() returned error %w, want nil", err),
+			GCEResourceInError: annotations.HealthcheckResource,
+		}
+	}
+
+	err = l4hc.deleteLocalHealthCheckFirewall()
+	if err != nil {
+		return &L4HealthCheckError{
+			Err:                fmt.Errorf("l4hc.deleteLocalHealthCheckFirewall() returned error %w, want nil", err),
+			GCEResourceInError: annotations.FirewallForHealthcheckResource,
+		}
+	}
+
+	return nil
+}
+
+func (l4hc *l4HealthChecks) deleteLocalHealthCheck() error {
+	return l4hc.hcProvider.Delete(l4hc.namer.LocalPolicyHealthCheck(l4hc.service.Namespace, l4hc.service.Name), l4hc.hcParams.scope)
+}
+
+func (l4hc *l4HealthChecks) deleteClusterHealthCheck() error {
+	return l4hc.hcProvider.Delete(l4hc.namer.ClusterPolicyHealthCheck(), l4hc.hcParams.scope)
+}
+
+func (l4hc *l4HealthChecks) safeDeleteClusterHealthCheckFirewall() error {
+	foundOtherHC, err := l4hc.existsOtherLBTypeClusterHealthCheck()
+	if err != nil {
+		return fmt.Errorf("l4hc.existsELBClusterHealthCheck() returned error %v, want nil", err)
+	}
+
+	if foundOtherHC {
+		return nil
+	}
+
+	err = l4hc.deleteClusterHealthCheckFirewall()
+	if err != nil {
+		return fmt.Errorf("l4hc.deleteClusterHealthCheckFirewall() returned error %v, want nil", err)
+	}
+	return nil
+}
+
+func (l4hc *l4HealthChecks) existsOtherLBTypeClusterHealthCheck() (bool, error) {
+	if l4hc.hcParams.l4Type == utils.XLB {
+		return l4hc.existsILBClusterHealthCheck()
+	} else {
+		return l4hc.existsELBClusterHealthCheck()
+	}
+}
+
+func (l4hc *l4HealthChecks) existsILBClusterHealthCheck() (bool, error) {
+	return l4hc.existsHealthCheck(l4hc.namer.ClusterPolicyHealthCheck(), meta.Global)
+}
+
+func (l4hc *l4HealthChecks) existsELBClusterHealthCheck() (bool, error) {
+	return l4hc.existsHealthCheck(l4hc.namer.ClusterPolicyHealthCheck(), meta.Regional)
+}
+
+func (l4hc *l4HealthChecks) existsHealthCheck(name string, scope meta.KeyType) (bool, error) {
+	hc, err := l4hc.hcProvider.Get(name, scope)
+	if err != nil {
+		return false, fmt.Errorf("l4hc.Get(%s, %s) returned error %w, want nil", name, scope, err)
 	}
 	return hc == nil, nil
 }
 
-func (l4hc *l4HealthChecks) deleteFirewall(name string, svc *corev1.Service) error {
+func (l4hc *l4HealthChecks) deleteLocalHealthCheckFirewall() error {
+	return l4hc.deleteHealthCheckFirewall(l4hc.namer.LocalPolicyHealthCheckFirewallRule(l4hc.service.Namespace, l4hc.service.Name))
+}
+
+func (l4hc *l4HealthChecks) deleteClusterHealthCheckFirewall() error {
+	return l4hc.deleteHealthCheckFirewall(l4hc.namer.ClusterPolicyHealthCheckFirewallRule())
+}
+
+func (l4hc *l4HealthChecks) deleteHealthCheckFirewall(name string) error {
 	err := firewalls.EnsureL4FirewallRuleDeleted(l4hc.cloud, name)
-	if err == nil {
-		return nil
-	}
-	// Suppress Firewall XPN error, as this is no retryable and requires action by security admin
-	if fwErr, ok := err.(*firewalls.FirewallXPNError); ok {
-		recorder := l4hc.recorderFactory.Recorder(svc.Namespace)
-		recorder.Eventf(svc, corev1.EventTypeNormal, "XPN", fwErr.Message)
-		return nil
-	}
-	return err
-}
-
-func newL4HealthCheck(name string, svcName types.NamespacedName, shared bool, path string, port int32, l4Type utils.L4LBType, scope meta.KeyType, region string) *composite.HealthCheck {
-	httpSettings := composite.HTTPHealthCheck{
-		Port:        int64(port),
-		RequestPath: path,
-	}
-
-	desc, err := utils.MakeL4LBServiceDescription(svcName.String(), "", meta.VersionGA, shared, l4Type)
 	if err != nil {
-		klog.Warningf("Failed to generate description for L4HealthCheck %s, err %v", name, err)
+		// Suppress Firewall XPN error, as this is no retryable and requires action by security admin
+		if fwErr, ok := err.(*firewalls.FirewallXPNError); ok {
+			l4hc.recorder.Eventf(l4hc.service, corev1.EventTypeNormal, "XPN", fwErr.Message)
+			return nil
+		}
+		return err
 	}
-	return &composite.HealthCheck{
-		Name:               name,
-		CheckIntervalSec:   gceHcCheckIntervalSeconds,
-		TimeoutSec:         gceHcTimeoutSeconds,
-		HealthyThreshold:   gceHcHealthyThreshold,
-		UnhealthyThreshold: gceHcUnhealthyThreshold,
-		HttpHealthCheck:    &httpSettings,
-		Type:               "HTTP",
-		Description:        desc,
-		Scope:              scope,
-		// Region will be omited by GCP API if Scope is set to Global
-		Region: region,
-	}
-}
-
-// mergeHealthChecks reconciles HealthCheck config to be no smaller than
-// the default values. newHC is assumed to have defaults,
-// since it is created by the newL4HealthCheck call.
-// E.g. old health check interval is 2s, new has the default of 8.
-// The HC interval will be reconciled to 8 seconds.
-// If the existing health check values are larger than the default interval,
-// the existing configuration will be kept.
-func mergeHealthChecks(hc, newHC *composite.HealthCheck) {
-	if hc.CheckIntervalSec > newHC.CheckIntervalSec {
-		newHC.CheckIntervalSec = hc.CheckIntervalSec
-	}
-	if hc.TimeoutSec > newHC.TimeoutSec {
-		newHC.TimeoutSec = hc.TimeoutSec
-	}
-	if hc.UnhealthyThreshold > newHC.UnhealthyThreshold {
-		newHC.UnhealthyThreshold = hc.UnhealthyThreshold
-	}
-	if hc.HealthyThreshold > newHC.HealthyThreshold {
-		newHC.HealthyThreshold = hc.HealthyThreshold
-	}
-}
-
-// needToUpdateHealthChecks checks whether the healthcheck needs to be updated.
-func needToUpdateHealthChecks(hc, newHC *composite.HealthCheck) bool {
-	return hc.HttpHealthCheck == nil ||
-		newHC.HttpHealthCheck == nil ||
-		hc.HttpHealthCheck.Port != newHC.HttpHealthCheck.Port ||
-		hc.HttpHealthCheck.RequestPath != newHC.HttpHealthCheck.RequestPath ||
-		hc.Description != newHC.Description ||
-		hc.CheckIntervalSec < newHC.CheckIntervalSec ||
-		hc.TimeoutSec < newHC.TimeoutSec ||
-		hc.UnhealthyThreshold < newHC.UnhealthyThreshold ||
-		hc.HealthyThreshold < newHC.HealthyThreshold
+	return nil
 }

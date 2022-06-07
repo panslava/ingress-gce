@@ -47,7 +47,9 @@ func NewL4Namer(kubeSystemUID string, namer *Namer) *L4Namer {
 
 // L4Backend returns the gce L4 Backend name based on the service namespace and name
 // Naming convention:
-//   k8s2-{uid}-{ns}-{name}-{suffix}
+//
+//	k8s2-{uid}-{ns}-{name}-{suffix}
+//
 // Output name is at most 63 characters.
 func (namer *L4Namer) L4Backend(namespace, name string) (string, bool) {
 	truncFields := TrimFieldsEvenly(maximumL4CombinedLength, namespace, name)
@@ -59,7 +61,9 @@ func (namer *L4Namer) L4Backend(namespace, name string) (string, bool) {
 
 // L4ForwardingRule returns the name of the L4 forwarding rule name based on the service namespace, name and protocol.
 // Naming convention:
-//   k8s2-{protocol}-{uid}-{ns}-{name}-{suffix}
+//
+//	k8s2-{protocol}-{uid}-{ns}-{name}-{suffix}
+//
 // Output name is at most 63 characters.
 func (namer *L4Namer) L4ForwardingRule(namespace, name, protocol string) string {
 	// add 1 for hyphen
@@ -70,14 +74,34 @@ func (namer *L4Namer) L4ForwardingRule(namespace, name, protocol string) string 
 	return strings.Join([]string{namer.v2Prefix, protocol, namer.v2ClusterUID, truncNamespace, truncName, namer.suffix(namespace, name)}, "-")
 }
 
-// L4HealthCheck returns the name of the L4 LB Healthcheck and the associated firewall rule.
-func (namer *L4Namer) L4HealthCheck(namespace, name string, shared bool) (string, string) {
-	if !shared {
-		l4Name, _ := namer.L4Backend(namespace, name)
-		return l4Name, namer.hcFirewallName(l4Name)
+func (namer *L4Namer) ClusterPolicyHealthCheck() string {
+	return strings.Join([]string{namer.v2Prefix, namer.v2ClusterUID, sharedHcSuffix}, "-")
+}
+
+func (namer *L4Namer) LocalPolicyHealthCheck(namespace, name string) string {
+	l4Name, _ := namer.L4Backend(namespace, name)
+	return l4Name
+}
+
+// ClusterPolicyHealthCheckFirewallRule returns the name of the L4 LB Firewall Rule for shared Health Check
+func (namer *L4Namer) ClusterPolicyHealthCheckFirewallRule() string {
+	return strings.Join([]string{namer.v2Prefix, namer.v2ClusterUID, sharedFirewallHcSuffix}, "-")
+}
+
+// LocalPolicyHealthCheckFirewallRule returns the name of the L4 LB Firewall Rule for non shared Health Check
+func (namer *L4Namer) LocalPolicyHealthCheckFirewallRule(namespace, name string) string {
+	l4Name, _ := namer.L4Backend(namespace, name)
+	return namer.hcFirewallName(l4Name)
+}
+
+// FirewallRuleForHealthCheck returns the name of the L4 LB  Firewall Rule for the Health Check
+func (namer *L4Namer) HealthCheckFirewallRule(namespace, name string, shared bool) string {
+	if shared {
+		return strings.Join([]string{namer.v2Prefix, namer.v2ClusterUID, sharedFirewallHcSuffix}, "-")
 	}
-	return strings.Join([]string{namer.v2Prefix, namer.v2ClusterUID, sharedHcSuffix}, "-"),
-		strings.Join([]string{namer.v2Prefix, namer.v2ClusterUID, sharedFirewallHcSuffix}, "-")
+
+	l4Name, _ := namer.L4Backend(namespace, name)
+	return namer.hcFirewallName(l4Name)
 }
 
 // IsNEG indicates if the given name is a NEG following the L4 naming convention.

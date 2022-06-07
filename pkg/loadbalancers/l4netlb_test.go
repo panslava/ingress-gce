@@ -27,12 +27,10 @@ import (
 	ga "google.golang.org/api/compute/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/record"
-	servicehelper "k8s.io/cloud-provider/service/helpers"
 	"k8s.io/ingress-gce/pkg/annotations"
 	"k8s.io/ingress-gce/pkg/composite"
 	"k8s.io/ingress-gce/pkg/firewalls"
 	"k8s.io/ingress-gce/pkg/flags"
-	"k8s.io/ingress-gce/pkg/healthchecks_l4"
 	"k8s.io/ingress-gce/pkg/metrics"
 	"k8s.io/ingress-gce/pkg/test"
 	"k8s.io/ingress-gce/pkg/utils"
@@ -56,7 +54,6 @@ func TestEnsureL4NetLoadBalancer(t *testing.T) {
 	namer := namer_util.NewL4Namer(kubeSystemUID, namer_util.NewNamer(vals.ClusterName, "cluster-fw"))
 
 	l4netlb := NewL4NetLB(svc, fakeGCE, meta.Regional, namer, record.NewFakeRecorder(100))
-	l4netlb.l4HealthChecks = healthchecks_l4.Fake(fakeGCE, &test.FakeRecorderSource{})
 
 	if _, err := test.CreateAndInsertNodes(l4netlb.cloud, nodeNames, vals.ZoneName); err != nil {
 		t.Errorf("Unexpected error when adding nodes %v", err)
@@ -90,7 +87,7 @@ func checkAnnotations(result *L4NetLBSyncResult, l4netlb *L4NetLB) error {
 	if result.Annotations[annotations.FirewallRuleKey] != expFwRule {
 		return fmt.Errorf("FirewallRuleKey mismatch %v != %v", expFwRule, result.Annotations[annotations.FirewallRuleKey])
 	}
-	_, expHcFwName := l4netlb.namer.L4HealthCheck(l4netlb.Service.Namespace, l4netlb.Service.Name, true)
+	expHcFwName := l4netlb.namer.ClusterPolicyHealthCheckFirewallRule()
 	if result.Annotations[annotations.FirewallRuleForHealthcheckKey] != expHcFwName {
 		return fmt.Errorf("FirewallRuleForHealthcheckKey mismatch %v != %v", expHcFwName, result.Annotations[annotations.FirewallRuleForHealthcheckKey])
 	}
@@ -107,7 +104,6 @@ func TestDeleteL4NetLoadBalancer(t *testing.T) {
 	namer := namer_util.NewL4Namer(kubeSystemUID, namer_util.NewNamer(vals.ClusterName, "cluster-fw"))
 
 	l4NetLB := NewL4NetLB(svc, fakeGCE, meta.Regional, namer, record.NewFakeRecorder(100))
-	l4NetLB.l4HealthChecks = healthchecks_l4.Fake(fakeGCE, &test.FakeRecorderSource{})
 
 	if _, err := test.CreateAndInsertNodes(l4NetLB.cloud, nodeNames, vals.ZoneName); err != nil {
 		t.Errorf("Unexpected error when adding nodes %v", err)
@@ -141,7 +137,7 @@ func TestDeleteL4NetLoadBalancerWithSharedHC(t *testing.T) {
 	}
 	// Health check is in used by second service
 	// we expect that firewall rule will not be deleted
-	_, hcFwName := l4NetLB.namer.L4HealthCheck(svc.Namespace, svc.Name, true)
+	hcFwName := l4NetLB.namer.ClusterPolicyHealthCheckFirewallRule()
 	firewall, err := l4NetLB.cloud.GetFirewall(hcFwName)
 	if err != nil || firewall == nil {
 		t.Errorf("Expected firewall exists err: %v, fwR: %v", err, firewall)
@@ -186,7 +182,8 @@ func TestHealthCheckFirewallDeletionWithILB(t *testing.T) {
 	}
 
 	// When ILB health check uses the same firewall rules we expect that hc firewall rule will not be deleted.
-	hcName, hcFwName := l4NetLB.namer.L4HealthCheck(l4NetLB.Service.Namespace, l4NetLB.Service.Name, true)
+	hcName := l4NetLB.namer.ClusterPolicyHealthCheck()
+	hcFwName := l4NetLB.namer.ClusterPolicyHealthCheckFirewallRule()
 	firewall, err := l4NetLB.cloud.GetFirewall(hcFwName)
 	if err != nil {
 		t.Errorf("Expected error: firewall exists, got %v", err)
@@ -209,11 +206,10 @@ func ensureLoadBalancer(port int, vals gce.TestClusterValues, fakeGCE *gce.Cloud
 	emptyNodes := []string{}
 
 	l4NetLB := NewL4NetLB(svc, fakeGCE, meta.Regional, namer, record.NewFakeRecorder(100))
-	l4NetLB.l4HealthChecks = healthchecks_l4.Fake(fakeGCE, &test.FakeRecorderSource{})
 
 	result := l4NetLB.EnsureFrontend(emptyNodes, svc)
 	if result.Error != nil {
-		t.Errorf("Failed to ensure loadBalancer, err %v", result.Error)
+		t.Fatalf("Failed to ensure loadBalancer, err %v", result.Error)
 	}
 	if len(result.Status.Ingress) == 0 {
 		t.Errorf("Got empty loadBalancer status using handler %v", l4NetLB)
@@ -226,8 +222,8 @@ func ensureNetLBResourceDeleted(t *testing.T, apiService *v1.Service, l4NetLb *L
 	t.Helper()
 
 	resourceName := l4NetLb.ServicePort.BackendName()
-	sharedHC := !servicehelper.RequestsOnlyLocalTraffic(apiService)
-	hcName, hcFwName := l4NetLb.namer.L4HealthCheck(apiService.Namespace, apiService.Name, sharedHC)
+	hcName := l4NetLb.l4HealthChecks.GetHealthCheckName()
+	hcFwName := l4NetLb.l4HealthChecks.GetHealthCheckFirewallName()
 
 	for _, fwName := range []string{resourceName, hcFwName} {
 		_, err := l4NetLb.cloud.GetFirewall(fwName)
@@ -266,7 +262,8 @@ func assertNetLbResources(t *testing.T, apiService *v1.Service, l4NetLb *L4NetLB
 
 	proto := utils.GetProtocol(apiService.Spec.Ports)
 
-	hcName, hcFwName := l4NetLb.namer.L4HealthCheck(apiService.Namespace, apiService.Name, true)
+	hcName := l4NetLb.l4HealthChecks.GetHealthCheckName()
+	hcFwName := l4NetLb.l4HealthChecks.GetHealthCheckFirewallName()
 
 	fwNamesAndDesc := []string{resourceName, hcFwName}
 
@@ -352,7 +349,6 @@ func TestMetricsForStandardNetworkTier(t *testing.T) {
 	namer := namer_util.NewL4Namer(kubeSystemUID, namer_util.NewNamer(vals.ClusterName, "cluster-fw"))
 
 	l4netlb := NewL4NetLB(svc, fakeGCE, meta.Regional, namer, record.NewFakeRecorder(100))
-	l4netlb.l4HealthChecks = healthchecks_l4.Fake(fakeGCE, &test.FakeRecorderSource{})
 
 	if _, err := test.CreateAndInsertNodes(l4netlb.cloud, nodeNames, vals.ZoneName); err != nil {
 		t.Errorf("Unexpected error when adding nodes %v", err)
@@ -399,7 +395,6 @@ func TestEnsureNetLBFirewallDestinations(t *testing.T) {
 	svc := test.NewL4NetLBRBSService(8080)
 	namer := namer_util.NewL4Namer(kubeSystemUID, nil)
 	l4netlb := NewL4NetLB(svc, fakeGCE, meta.Regional, namer, record.NewFakeRecorder(100))
-	l4netlb.l4HealthChecks = healthchecks_l4.Fake(fakeGCE, &test.FakeRecorderSource{})
 
 	if _, err := test.CreateAndInsertNodes(l4netlb.cloud, nodeNames, vals.ZoneName); err != nil {
 		t.Errorf("Unexpected error when adding nodes %v", err)

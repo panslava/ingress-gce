@@ -23,7 +23,6 @@ import (
 	"testing"
 	"time"
 
-	"k8s.io/ingress-gce/pkg/healthchecks_l4"
 	"k8s.io/ingress-gce/pkg/loadbalancers"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
@@ -70,7 +69,6 @@ func newServiceController(t *testing.T, fakeGCE *gce.Cloud) *L4Controller {
 	for _, n := range nodes {
 		ctx.NodeInformer.GetIndexer().Add(n)
 	}
-	healthchecks_l4.Fake(ctx.Cloud, ctx)
 	return NewILBController(ctx, stopCh)
 }
 
@@ -248,8 +246,10 @@ func TestProcessCreateOrUpdate(t *testing.T) {
 	if err = l4c.sync(key); err != nil {
 		t.Errorf("Failed to sync deleted service %s, err %v", key, err)
 	}
-	for _, isShared := range []bool{true, false} {
-		hcName, _ := l4c.namer.L4HealthCheck(newSvc.Namespace, newSvc.Name, isShared)
+
+	localHCName := l4c.namer.LocalPolicyHealthCheck(newSvc.Namespace, newSvc.Name)
+	clusterHCName := l4c.namer.ClusterPolicyHealthCheck()
+	for _, hcName := range []string{localHCName, clusterHCName} {
 		if !isHealthCheckDeleted(l4c.ctx.Cloud, hcName) {
 			t.Errorf("Health check %s should be deleted", hcName)
 		}
@@ -290,11 +290,13 @@ func TestProcessUpdateExternalTrafficPolicy(t *testing.T) {
 		t.Errorf("Failed to lookup service %s, err: %v", svc.Name, err)
 	}
 	validateSvcStatus(svc, true, t)
+
 	// Verify that both health checks were created.
-	for _, isShared := range []bool{true, false} {
-		hcName, _ := l4c.namer.L4HealthCheck(svc.Namespace, svc.Name, isShared)
+	localHCName := l4c.namer.LocalPolicyHealthCheck(svc.Namespace, svc.Name)
+	clusterHCName := l4c.namer.ClusterPolicyHealthCheck()
+	for _, hcName := range []string{localHCName, clusterHCName} {
 		if isHealthCheckDeleted(l4c.ctx.Cloud, hcName) {
-			t.Errorf("Health check %s should be created", hcName)
+			t.Errorf("Health check %s should be deleted", hcName)
 		}
 	}
 	// Delete service.
@@ -304,9 +306,9 @@ func TestProcessUpdateExternalTrafficPolicy(t *testing.T) {
 	if err = l4c.sync(key); err != nil {
 		t.Errorf("Failed to sync deleted service %s, err %v", key, err)
 	}
+
 	// Verify that both health checks were deleted.
-	for _, isShared := range []bool{true, false} {
-		hcName, _ := l4c.namer.L4HealthCheck(svc.Namespace, svc.Name, isShared)
+	for _, hcName := range []string{localHCName, clusterHCName} {
 		if !isHealthCheckDeleted(l4c.ctx.Cloud, hcName) {
 			t.Errorf("Health check %s should be deleted", hcName)
 		}

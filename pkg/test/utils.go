@@ -132,6 +132,14 @@ func NewL4NetLBRBSService(port int) *api_v1.Service {
 	return svc
 }
 
+// NewL4NetLBLocalPolicyRBSService creates a Service of type LoadBalancer with RBS Annotation
+func NewL4NetLBLocalPolicyRBSService(port int) *api_v1.Service {
+	svc := NewL4NetLBRBSService(port)
+	svc.Spec.ExternalTrafficPolicy = api_v1.ServiceExternalTrafficPolicyTypeLocal
+
+	return svc
+}
+
 // NewL4NetLBRBSServiceMultiplePorts creates a Service of type LoadBalancer with multiple named ports.
 func NewL4NetLBRBSServiceMultiplePorts(name string, ports []int32) *api_v1.Service {
 	svc := NewL4LegacyNetLBServiceWithoutPorts()

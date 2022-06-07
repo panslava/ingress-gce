@@ -1,27 +1,30 @@
 package healthchecks_l4
 
 import (
+	"fmt"
+
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/ingress-gce/pkg/composite"
-	"k8s.io/ingress-gce/pkg/utils"
-	"k8s.io/ingress-gce/pkg/utils/namer"
 )
 
 // L4HealthChecks defines methods for creating and deleting health checks (and their firewall rules) for l4 services
 type L4HealthChecks interface {
-	// EnsureL4HealthCheck creates health check (and firewall rule) for l4 service
-	EnsureL4HealthCheck(svc *v1.Service, namer namer.L4ResourcesNamer, sharedHC bool, scope meta.KeyType, l4Type utils.L4LBType, nodeNames []string) *EnsureL4HealthCheckResult
-	// DeleteHealthCheck deletes health check (and firewall rule) for l4 service
-	DeleteHealthCheck(svc *v1.Service, namer namer.L4ResourcesNamer, sharedHC bool, scope meta.KeyType, l4Type utils.L4LBType) (string, error)
+	// EnsureHealthCheckWithFirewall creates health check and firewall rule for health check for l4 service
+	EnsureHealthCheckWithFirewall(nodeNames []string) (string, error)
+	// DeleteHealthChecksWithFirewalls
+	DeleteHealthChecksWithFirewalls() error
+
+	GetHealthCheckName() string
+	GetHealthCheckFirewallName() string
 }
 
-type EnsureL4HealthCheckResult struct {
-	HCName             string
-	HCLink             string
-	HCFirewallRuleName string
-	GceResourceInError string
+type L4HealthCheckError struct {
 	Err                error
+	GCEResourceInError string
+}
+
+func (l4hcerr *L4HealthCheckError) Error() string {
+	return fmt.Sprintf("GCE Resource %v is in error: %v", l4hcerr.GCEResourceInError, l4hcerr.Err)
 }
 
 type HealthChecksProvider interface {
@@ -29,5 +32,4 @@ type HealthChecksProvider interface {
 	Create(healthCheck *composite.HealthCheck) error
 	Update(name string, scope meta.KeyType, updatedHealthCheck *composite.HealthCheck) error
 	Delete(name string, scope meta.KeyType) error
-	SelfLink(name string, scope meta.KeyType) (string, error)
 }
