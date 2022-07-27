@@ -124,7 +124,7 @@ func (l4netlb *L4NetLB) EnsureFrontend(nodeNames []string, svc *corev1.Service) 
 	l4netlb.Service = svc
 
 	sharedHC := !helpers.RequestsOnlyLocalTraffic(svc)
-	hcResult := l4netlb.l4HealthChecks.EnsureL4HealthCheck(l4netlb.Service, l4netlb.namer, sharedHC, l4netlb.scope, utils.XLB, nodeNames)
+	hcResult := l4netlb.l4HealthChecks.EnsureL4HealthCheck(l4netlb.Service, l4netlb.namer, sharedHC, l4netlb.scope, utils.XLB, nodeNames, false)
 
 	if hcResult.Err != nil {
 		result.GCEResourceInError = hcResult.GceResourceInError
@@ -158,6 +158,20 @@ func (l4netlb *L4NetLB) EnsureFrontend(nodeNames []string, svc *corev1.Service) 
 	} else {
 		result.Annotations[annotations.UDPForwardingRuleKey] = fr.Name
 	}
+
+	ipv6fr, err := l4netlb.ensureIPv6ForwardingRule(bs.SelfLink)
+	if err != nil {
+		klog.Errorf("Failed to create external ipv6 forwarding rule - %v", err)
+		result.GCEResourceInError = annotations.IPv6ForwardingRuleResource
+		result.Error = err
+		return result
+	}
+	if ipv6fr.IPProtocol == string(corev1.ProtocolTCP) {
+		result.Annotations[annotations.IPv6TCPForwardingRuleKey] = ipv6fr.Name
+	} else {
+		result.Annotations[annotations.IPv6UDPForwardingRuleKey] = ipv6fr.Name
+	}
+
 	result.Status = &corev1.LoadBalancerStatus{Ingress: []corev1.LoadBalancerIngress{{IP: fr.IPAddress}}}
 	result.MetricsState.IsPremiumTier = fr.NetworkTier == cloud.NetworkTierPremium.ToGCEValue()
 	result.MetricsState.IsManagedIP = ipAddrType == IPAddrManaged
@@ -224,7 +238,7 @@ func (l4netlb *L4NetLB) EnsureLoadBalancerDeleted(svc *corev1.Service) *L4NetLBS
 	// When service is deleted we need to check both health checks shared and non-shared
 	// and delete them if needed.
 	for _, isShared := range []bool{true, false} {
-		resourceInError, err := l4netlb.l4HealthChecks.DeleteHealthCheck(svc, l4netlb.namer, isShared, meta.Regional, utils.XLB)
+		resourceInError, err := l4netlb.l4HealthChecks.DeleteHealthCheck(svc, l4netlb.namer, isShared, meta.Regional, utils.XLB, false)
 		if err != nil {
 			result.GCEResourceInError = resourceInError
 			result.Error = err
@@ -251,6 +265,11 @@ func (l4netlb *L4NetLB) deleteFirewall(name string) error {
 // which controller should process the service Ingress-GCE or k/k service controller.
 func (l4netlb *L4NetLB) GetFRName() string {
 	return utils.LegacyForwardingRuleName(l4netlb.Service)
+}
+
+// GetIPv6FRName returns the name of the ipv6 forwarding rule for the given L4 External LoadBalancer service.
+func (l4netlb *L4NetLB) GetIPv6FRName() string {
+	return l4netlb.GetFRName() + "-ipv6"
 }
 
 func (l4netlb *L4NetLB) createFirewalls(name string, nodeNames []string, ipAddress string, portRanges []string, protocol string) *L4NetLBSyncResult {

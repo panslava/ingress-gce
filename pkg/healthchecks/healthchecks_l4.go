@@ -103,7 +103,7 @@ func L4() *l4HealthChecks {
 // Regional). This means that one Firewall rule is created for
 // Services of different scope (Global vs Regional).
 
-func (l4hc *l4HealthChecks) EnsureL4HealthCheck(svc *corev1.Service, namer namer.L4ResourcesNamer, sharedHC bool, scope meta.KeyType, l4Type utils.L4LBType, nodeNames []string) *EnsureL4HealthCheckResult {
+func (l4hc *l4HealthChecks) EnsureL4HealthCheck(svc *corev1.Service, namer namer.L4ResourcesNamer, sharedHC bool, scope meta.KeyType, l4Type utils.L4LBType, nodeNames []string, handleIPv6 bool) *EnsureL4HealthCheckResult {
 	namespacedName := types.NamespacedName{Name: svc.Name, Namespace: svc.Namespace}
 
 	hcName, hcFwName := namer.L4HealthCheck(svc.Namespace, svc.Name, sharedHC)
@@ -130,10 +130,22 @@ func (l4hc *l4HealthChecks) EnsureL4HealthCheck(svc *corev1.Service, namer namer
 	err = l4hc.ensureFirewall(svc, hcFwName, hcPort, sharedHC, nodeNames)
 	if err != nil {
 		return &EnsureL4HealthCheckResult{
-			GceResourceInError: annotations.HealthcheckResource,
+			GceResourceInError: annotations.FirewallForHealthcheckResource,
 			Err:                err,
 		}
 	}
+
+	if handleIPv6 {
+		klog.V(3).Infof("Healthcheck created, ensuring ipv6 firewall rule")
+		err = l4hc.ensureIPv6Firewall(svc, namer, hcPort, sharedHC, nodeNames)
+		if err != nil {
+			return &EnsureL4HealthCheckResult{
+				GceResourceInError: annotations.IPv6FirewallForHealthcheckResource,
+				Err:                err,
+			}
+		}
+	}
+
 	return &EnsureL4HealthCheckResult{
 		HCName:             hcName,
 		HCLink:             hcLink,
@@ -141,8 +153,20 @@ func (l4hc *l4HealthChecks) EnsureL4HealthCheck(svc *corev1.Service, namer namer
 	}
 }
 
+func (l4hc *l4HealthChecks) ensureIPv6Firewall(svc *corev1.Service, namer namer.L4ResourcesNamer, hcPort int32, isSharedHC bool, nodeNames []string) error {
+	fwName := namer.L4IPv6HealthCheckFirewall(svc.Namespace, svc.Name, isSharedHC)
+	hcFWRParams := firewalls.FirewallParams{
+		PortRanges:   []string{strconv.Itoa(int(hcPort))},
+		SourceRanges: L4ILBIPv6HCRange.StringSlice(),
+		Protocol:     string(corev1.ProtocolTCP),
+		Name:         fwName,
+		NodeNames:    nodeNames,
+	}
+	return firewalls.EnsureL4LBFirewallForHc(svc, isSharedHC, &hcFWRParams, l4hc.cloud, l4hc.recorderFactory.Recorder(svc.Namespace))
+}
+
 // DeleteHealthCheck deletes health check (and firewall rule) for l4 service. Checks if shared resources are safe to delete.
-func (l4hc *l4HealthChecks) DeleteHealthCheck(svc *corev1.Service, namer namer.L4ResourcesNamer, sharedHC bool, scope meta.KeyType, l4Type utils.L4LBType) (string, error) {
+func (l4hc *l4HealthChecks) DeleteHealthCheck(svc *corev1.Service, namer namer.L4ResourcesNamer, sharedHC bool, scope meta.KeyType, l4Type utils.L4LBType, handleIPv6 bool) (string, error) {
 
 	hcName, hcFwName := namer.L4HealthCheck(svc.Namespace, svc.Name, sharedHC)
 	namespacedName := types.NamespacedName{Name: svc.Name, Namespace: svc.Namespace}
@@ -164,6 +188,12 @@ func (l4hc *l4HealthChecks) DeleteHealthCheck(svc *corev1.Service, namer namer.L
 		return "", nil
 	}
 	// Health check deleted, now delete the firewall rule
+	if handleIPv6 {
+		errResource, err := l4hc.deleteIPv6HealthCheckFirewall(svc, hcName, namer, sharedHC, l4Type)
+		if err != nil {
+			return errResource, err
+		}
+	}
 	return l4hc.deleteHealthCheckFirewall(svc, hcName, hcFwName, sharedHC, l4Type)
 }
 
@@ -254,6 +284,11 @@ func (l4hc *l4HealthChecks) deleteHealthCheckFirewall(svc *corev1.Service, hcNam
 		return annotations.FirewallForHealthcheckResource, err
 	}
 	return "", nil
+}
+
+func (l4hc *l4HealthChecks) deleteIPv6HealthCheckFirewall(svc *corev1.Service, hcName string, namer namer.L4ResourcesNamer, sharedHC bool, l4type utils.L4LBType) (string, error) {
+	ipv6hcFwName := namer.L4IPv6HealthCheckFirewall(svc.Namespace, svc.Name, sharedHC)
+	return l4hc.deleteHealthCheckFirewall(svc, hcName, ipv6hcFwName, sharedHC, l4type)
 }
 
 func (l4hc *l4HealthChecks) healthCheckFirewallSafeToDelete(hcName string, sharedHC bool, l4Type utils.L4LBType) (bool, error) {
