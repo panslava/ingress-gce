@@ -17,6 +17,7 @@ const (
 	maximumL4CombinedLength = 39
 	sharedHcSuffix          = "l4-shared-hc"
 	firewallHcSuffix        = "-fw"
+	ipv6Suffix              = "ipv6"
 	sharedFirewallHcSuffix  = sharedHcSuffix + firewallHcSuffix
 	maxResourceNameLength   = 63
 )
@@ -47,19 +48,22 @@ func NewL4Namer(kubeSystemUID string, namer *Namer) *L4Namer {
 
 // L4Backend returns the gce L4 Backend name based on the service namespace and name
 // Naming convention:
-//   k8s2-{uid}-{ns}-{name}-{suffix}
+//
+//	k8s2-{uid}-{ns}-{name}-{suffix}
+//
 // Output name is at most 63 characters.
 func (namer *L4Namer) L4Backend(namespace, name string) (string, bool) {
 	truncFields := TrimFieldsEvenly(maximumL4CombinedLength, namespace, name)
 	truncNamespace := truncFields[0]
 	truncName := truncFields[1]
 	return strings.Join([]string{namer.v2Prefix, namer.v2ClusterUID, truncNamespace, truncName, namer.suffix(namespace, name)}, "-"), true
-
 }
 
 // L4ForwardingRule returns the name of the L4 forwarding rule name based on the service namespace, name and protocol.
 // Naming convention:
-//   k8s2-{protocol}-{uid}-{ns}-{name}-{suffix}
+//
+//	k8s2-{protocol}-{uid}-{ns}-{name}-{suffix}
+//
 // Output name is at most 63 characters.
 func (namer *L4Namer) L4ForwardingRule(namespace, name, protocol string) string {
 	// add 1 for hyphen
@@ -70,6 +74,16 @@ func (namer *L4Namer) L4ForwardingRule(namespace, name, protocol string) string 
 	return strings.Join([]string{namer.v2Prefix, protocol, namer.v2ClusterUID, truncNamespace, truncName, namer.suffix(namespace, name)}, "-")
 }
 
+// L4IPv6ForwardingRule returns the name of the L4 forwarding rule name based on the service namespace, name and protocol.
+// Naming convention:
+//
+//	k8s2-{protocol}-{uid}-{ns}-{name}-{suffix}
+//
+// Output name is at most 63 characters.
+func (namer *L4Namer) L4IPv6ForwardingRule(namespace, name, protocol string) string {
+	return strings.Join([]string{namer.L4ForwardingRule(namespace, name, protocol), ipv6Suffix}, "-")
+}
+
 // L4HealthCheck returns the name of the L4 LB Healthcheck and the associated firewall rule.
 func (namer *L4Namer) L4HealthCheck(namespace, name string, shared bool) (string, string) {
 	if !shared {
@@ -78,6 +92,15 @@ func (namer *L4Namer) L4HealthCheck(namespace, name string, shared bool) (string
 	}
 	return strings.Join([]string{namer.v2Prefix, namer.v2ClusterUID, sharedHcSuffix}, "-"),
 		strings.Join([]string{namer.v2Prefix, namer.v2ClusterUID, sharedFirewallHcSuffix}, "-")
+}
+
+// L4IPv6HealthCheckFirewall returns the name of the IPv6 L4 LB health check firewall rule.
+func (namer *L4Namer) L4IPv6HealthCheckFirewall(namespace, name string, shared bool) string {
+	if !shared {
+		l4Name, _ := namer.L4Backend(namespace, name)
+		return strings.Join([]string{namer.hcFirewallName(l4Name), ipv6Suffix}, "-")
+	}
+	return strings.Join([]string{namer.v2Prefix, namer.v2ClusterUID, sharedFirewallHcSuffix, ipv6Suffix}, "-")
 }
 
 // IsNEG indicates if the given name is a NEG following the L4 naming convention.

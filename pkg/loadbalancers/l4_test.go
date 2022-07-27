@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"k8s.io/ingress-gce/pkg/healthchecks"
+	"k8s.io/utils/net"
 
 	"google.golang.org/api/compute/v1"
 	"k8s.io/ingress-gce/pkg/backends"
@@ -1446,4 +1447,8 @@ func assertInternalLbResourcesDeleted(t *testing.T, apiService *v1.Service, fire
 	if err == nil || addr != nil {
 		t.Errorf("Expected error when looking up IP address after deletion")
 	}
+}
+
+func TestParseIPv6(t *testing.T) {
+	net.ParseIPSloppy("")
 }

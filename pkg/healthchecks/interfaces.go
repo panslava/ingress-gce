@@ -62,9 +62,9 @@ type HealthChecker interface {
 // L4HealthChecks defines methods for creating and deleting health checks (and their firewall rules) for l4 services
 type L4HealthChecks interface {
 	// EnsureL4HealthCheck creates health check (and firewall rule) for l4 service
-	EnsureL4HealthCheck(svc *v1.Service, namer namer.L4ResourcesNamer, sharedHC bool, scope meta.KeyType, l4Type utils.L4LBType, nodeNames []string) *EnsureL4HealthCheckResult
+	EnsureL4HealthCheck(svc *v1.Service, namer namer.L4ResourcesNamer, sharedHC bool, scope meta.KeyType, l4Type utils.L4LBType, nodeNames []string, handleIPv6 bool) *EnsureL4HealthCheckResult
 	// DeleteHealthCheck deletes health check (and firewall rule) for l4 service
-	DeleteHealthCheck(svc *v1.Service, namer namer.L4ResourcesNamer, sharedHC bool, scope meta.KeyType, l4Type utils.L4LBType) (string, error)
+	DeleteHealthCheck(svc *v1.Service, namer namer.L4ResourcesNamer, sharedHC bool, scope meta.KeyType, l4Type utils.L4LBType, handleIPv6 bool) (string, error)
 }
 
 type EnsureL4HealthCheckResult struct {

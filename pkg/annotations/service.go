@@ -73,6 +73,7 @@ const (
 	// ProtocolHTTP2 protocol for a service
 	ProtocolHTTP2 AppProtocol = "HTTP2"
 
+	IPv6Suffix = "-ipv6"
 	// ServiceStatusPrefix is the prefix used in annotations used to record
 	// debug information in the Service annotations. This is applicable to L4 ILB services.
 	ServiceStatusPrefix = "service.kubernetes.io"
@@ -82,6 +83,12 @@ const (
 	// UDPForwardingRuleKey is the annotation key used by l4 controller to record
 	// GCP UDP forwarding rule name.
 	UDPForwardingRuleKey = ServiceStatusPrefix + "/udp-" + ForwardingRuleResource
+	// IPv6TCPForwardingRuleKey is the annotation key used by l4 controller to record
+	// GCP TCP forwarding rule name.
+	IPv6TCPForwardingRuleKey = TCPForwardingRuleKey + IPv6Suffix
+	// IPv6UDPForwardingRuleKey is the annotation key used by l4 controller to record
+	// GCP UDP forwarding rule name.
+	IPv6UDPForwardingRuleKey = UDPForwardingRuleKey + IPv6Suffix
 	// BackendServiceKey is the annotation key used by l4 controller to record
 	// GCP Backend service name.
 	BackendServiceKey = ServiceStatusPrefix + "/" + BackendServiceResource
@@ -93,13 +100,16 @@ const (
 	HealthcheckKey = ServiceStatusPrefix + "/" + HealthcheckResource
 	// FirewallRuleForHealthcheckKey is the annotation key used by l4 controller to record
 	// the firewall rule name that allows healthcheck traffic.
-	FirewallRuleForHealthcheckKey  = ServiceStatusPrefix + "/" + FirewallForHealthcheckResource
-	ForwardingRuleResource         = "forwarding-rule"
-	BackendServiceResource         = "backend-service"
-	FirewallRuleResource           = "firewall-rule"
-	HealthcheckResource            = "healthcheck"
-	FirewallForHealthcheckResource = "firewall-rule-for-hc"
-	AddressResource                = "address"
+	FirewallRuleForHealthcheckKey      = ServiceStatusPrefix + "/" + FirewallForHealthcheckResource
+	ForwardingRuleResource             = "forwarding-rule"
+	IPv6ForwardingRuleResource         = ForwardingRuleResource + IPv6Suffix
+	BackendServiceResource             = "backend-service"
+	FirewallRuleResource               = "firewall-rule"
+	IPv6FirewallRuleResource           = FirewallRuleResource + IPv6Suffix
+	HealthcheckResource                = "healthcheck"
+	FirewallForHealthcheckResource     = "firewall-rule-for-hc"
+	IPv6FirewallForHealthcheckResource = FirewallRuleForHealthcheckKey + IPv6Suffix
+	AddressResource                    = "address"
 	// TODO(slavik): import this from gce_annotations when it will be merged in k8s
 	RBSAnnotationKey = "cloud.google.com/l4-rbs"
 	RBSEnabled       = "enabled"

@@ -739,6 +739,10 @@ func MakeL4LBServiceDescription(svcName, ip string, version meta.Version, shared
 	return (&L4LBResourceDescription{ServiceName: svcName, ServiceIP: ip, APIVersion: version}).Marshal()
 }
 
+func MakeL4IPv6ForwardingRuleDescription(service *api_v1.Service) (string, error) {
+	return (&L4LBResourceDescription{ServiceName: ServiceKeyFunc(service.Namespace, service.Name)}).Marshal()
+}
+
 // NewStringPointer returns a pointer to the provided string literal
 func NewStringPointer(s string) *string {
 	return &s
