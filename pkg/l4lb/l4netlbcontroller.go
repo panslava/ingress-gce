@@ -276,7 +276,11 @@ func (lc *L4NetLBController) hasTargetPoolForwardingRule(service *v1.Service) bo
 		return false
 	}
 
-	existingFR := l4netlb.GetForwardingRule(frName, meta.VersionGA)
+	existingFR, err := l4netlb.GetForwardingRule(frName)
+	if err != nil {
+		klog.Errorf("Error getting forwarding rule %s", frName)
+		return false
+	}
 	if existingFR != nil && existingFR.Target != "" {
 		return true
 	}
@@ -323,7 +327,11 @@ func (lc *L4NetLBController) hasRBSForwardingRule(svc *v1.Service) bool {
 	if lc.hasForwardingRuleAnnotation(svc, frName) {
 		return true
 	}
-	existingFR := l4netlb.GetForwardingRule(frName, meta.VersionGA)
+	existingFR, err := l4netlb.GetForwardingRule(frName)
+	if err != nil {
+		klog.Errorf("Error getting forwarding rule %s", frName)
+		return false
+	}
 	return existingFR != nil && existingFR.LoadBalancingScheme == string(cloud.SchemeExternal) && existingFR.BackendService != ""
 }
 
