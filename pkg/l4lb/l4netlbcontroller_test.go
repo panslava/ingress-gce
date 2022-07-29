@@ -27,11 +27,13 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/api/googleapi"
+	"k8s.io/ingress-gce/pkg/healthchecks_l4"
+
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/mock"
 	ga "google.golang.org/api/compute/v1"
-	"google.golang.org/api/googleapi"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -42,7 +44,6 @@ import (
 	"k8s.io/ingress-gce/pkg/annotations"
 	"k8s.io/ingress-gce/pkg/composite"
 	ingctx "k8s.io/ingress-gce/pkg/context"
-	"k8s.io/ingress-gce/pkg/healthchecks_l4"
 	"k8s.io/ingress-gce/pkg/loadbalancers"
 	"k8s.io/ingress-gce/pkg/test"
 	"k8s.io/ingress-gce/pkg/utils"
