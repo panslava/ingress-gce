@@ -31,7 +31,7 @@ import (
 	"k8s.io/ingress-gce/pkg/backends"
 	"k8s.io/ingress-gce/pkg/composite"
 	"k8s.io/ingress-gce/pkg/firewalls"
-	"k8s.io/ingress-gce/pkg/healthchecks"
+	"k8s.io/ingress-gce/pkg/healthchecks_l4"
 	"k8s.io/ingress-gce/pkg/metrics"
 	"k8s.io/ingress-gce/pkg/utils"
 	"k8s.io/ingress-gce/pkg/utils/namer"
@@ -51,7 +51,7 @@ type L4 struct {
 	Service        *corev1.Service
 	ServicePort    utils.ServicePort
 	NamespacedName types.NamespacedName
-	l4HealthChecks healthchecks.L4HealthChecks
+	l4HealthChecks healthchecks_l4.L4HealthChecks
 }
 
 // L4ILBSyncResult contains information about the outcome of an L4 ILB sync. It stores the list of resource name annotations,
@@ -74,7 +74,7 @@ func NewL4Handler(service *corev1.Service, cloud *gce.Cloud, scope meta.KeyType,
 		namer:          namer,
 		recorder:       recorder,
 		Service:        service,
-		l4HealthChecks: healthchecks.L4(),
+		l4HealthChecks: healthchecks_l4.GetInstance(),
 	}
 	l.NamespacedName = types.NamespacedName{Name: service.Name, Namespace: service.Namespace}
 	l.backendPool = backends.NewPool(l.cloud, l.namer)
