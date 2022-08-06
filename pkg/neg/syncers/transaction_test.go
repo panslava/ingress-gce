@@ -29,7 +29,6 @@ import (
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -825,12 +824,12 @@ func TestCommitPods(t *testing.T) {
 					endpointSet, endpointMap := generateEndpointSetAndMap(net.ParseIP("1.1.1.1"), 10, testInstance1, "8080")
 					retSet[testZone1] = retSet[testZone1].Union(endpointSet)
 					retMap = unionEndpointMap(retMap, endpointMap)
-					endpointSet, endpointMap = generateEndpointSetAndMap(net.ParseIP("1.1.2.1"), 10, testInstance2, "8080")
+					endpointSet, _ = generateEndpointSetAndMap(net.ParseIP("1.1.2.1"), 10, testInstance2, "8080")
 					retSet[testZone1] = retSet[testZone1].Union(endpointSet)
 					endpointSet, endpointMap = generateEndpointSetAndMap(net.ParseIP("1.1.3.1"), 10, testInstance3, "8080")
 					retSet[testZone2] = retSet[testZone2].Union(endpointSet)
 					retMap = unionEndpointMap(retMap, endpointMap)
-					endpointSet, endpointMap = generateEndpointSetAndMap(net.ParseIP("1.1.4.1"), 10, testInstance4, "8080")
+					endpointSet, _ = generateEndpointSetAndMap(net.ParseIP("1.1.4.1"), 10, testInstance4, "8080")
 					retSet[testZone2] = retSet[testZone2].Union(endpointSet)
 					return retSet, retMap
 				},
@@ -1024,10 +1023,10 @@ func TestTransactionSyncerWithNegCR(t *testing.T) {
 				}
 
 				// Since timestamp gets truncated to the second, there is a chance that the timestamps will be the same as LastTransitionTime or LastSyncTime so use creation TS from an earlier date.
-				creationTS := v1.Date(2020, time.July, 23, 0, 0, 0, 0, time.UTC)
+				creationTS := metav1.Date(2020, time.July, 23, 0, 0, 0, 0, time.UTC)
 				//Create NEG CR for Syncer to update status on
 				origCR := createNegCR(testNegName, creationTS, tc.crStatusPopulated, tc.crStatusPopulated, refs)
-				neg, err := negClient.NetworkingV1beta1().ServiceNetworkEndpointGroups(testNamespace).Create(context2.Background(), origCR, v1.CreateOptions{})
+				neg, err := negClient.NetworkingV1beta1().ServiceNetworkEndpointGroups(testNamespace).Create(context2.Background(), origCR, metav1.CreateOptions{})
 				if err != nil {
 					t.Errorf("Failed to create test NEG CR: %s", err)
 				}
@@ -1040,7 +1039,7 @@ func TestTransactionSyncerWithNegCR(t *testing.T) {
 					t.Errorf("Expected error, but got none")
 				}
 
-				negCR, err := negClient.NetworkingV1beta1().ServiceNetworkEndpointGroups(testNamespace).Get(context2.Background(), testNegName, v1.GetOptions{})
+				negCR, err := negClient.NetworkingV1beta1().ServiceNetworkEndpointGroups(testNamespace).Get(context2.Background(), testNegName, metav1.GetOptions{})
 				if err != nil {
 					t.Errorf("Failed to get NEG from neg client: %s", err)
 				}
@@ -1085,7 +1084,7 @@ func TestTransactionSyncerWithNegCR(t *testing.T) {
 				}
 			})
 
-			negClient.NetworkingV1beta1().ServiceNetworkEndpointGroups(testNamespace).Delete(context2.TODO(), testNegName, v1.DeleteOptions{})
+			negClient.NetworkingV1beta1().ServiceNetworkEndpointGroups(testNamespace).Delete(context2.TODO(), testNegName, metav1.DeleteOptions{})
 
 			syncer.cloud.DeleteNetworkEndpointGroup(testNegName, negtypes.TestZone1, syncer.NegSyncerKey.GetAPIVersion())
 			syncer.cloud.DeleteNetworkEndpointGroup(testNegName, negtypes.TestZone2, syncer.NegSyncerKey.GetAPIVersion())
@@ -1183,7 +1182,9 @@ func TestUpdateStatus(t *testing.T) {
 							Subnetwork:          fakeCloud.SubnetworkURL(),
 							Description:         "",
 						}, testZone1)
-
+						if err != nil {
+							t.Errorf("failed to create negs: %s", err)
+						}
 						_, err = fakeCloud.GetNetworkEndpointGroup(testNegName, testZone1, syncer.NegSyncerKey.GetAPIVersion())
 						if err != nil {
 							t.Errorf("failed to get neg from cloud: %s ", err)
@@ -1191,9 +1192,9 @@ func TestUpdateStatus(t *testing.T) {
 					}
 
 					// Since timestamp gets truncated to the second, there is a chance that the timestamps will be the same as LastTransitionTime or LastSyncTime so use creation TS from an earlier date
-					creationTS := v1.Date(2020, time.July, 23, 0, 0, 0, 0, time.UTC)
+					creationTS := metav1.Date(2020, time.July, 23, 0, 0, 0, 0, time.UTC)
 					origCR := createNegCR(testNegName, creationTS, tc.populateConditions[negv1beta1.Initialized], tc.populateConditions[negv1beta1.Synced], tc.negRefs)
-					origCR, err := svcNegClient.NetworkingV1beta1().ServiceNetworkEndpointGroups(testNamespace).Create(context2.Background(), origCR, v1.CreateOptions{})
+					origCR, err := svcNegClient.NetworkingV1beta1().ServiceNetworkEndpointGroups(testNamespace).Create(context2.Background(), origCR, metav1.CreateOptions{})
 					if err != nil {
 						t.Errorf("Failed to create test NEG CR: %s", err)
 					}
@@ -1201,7 +1202,7 @@ func TestUpdateStatus(t *testing.T) {
 
 					syncer.updateStatus(syncErr)
 
-					negCR, err := svcNegClient.NetworkingV1beta1().ServiceNetworkEndpointGroups(testNamespace).Get(context2.Background(), testNegName, v1.GetOptions{})
+					negCR, err := svcNegClient.NetworkingV1beta1().ServiceNetworkEndpointGroups(testNamespace).Get(context2.Background(), testNegName, metav1.GetOptions{})
 					if err != nil {
 						t.Errorf("Failed to create test NEG CR: %s", err)
 					}
@@ -1280,7 +1281,7 @@ func TestIsZoneChange(t *testing.T) {
 			for _, neg := range negRefMap {
 				refs = append(refs, neg)
 			}
-			negCR := createNegCR(syncer.NegName, v1.Now(), true, true, refs)
+			negCR := createNegCR(syncer.NegName, metav1.Now(), true, true, refs)
 			if err = syncer.svcNegLister.Add(negCR); err != nil {
 				t.Errorf("failed to add neg to store:%s", err)
 			}
@@ -1468,14 +1469,6 @@ func newTestTransactionSyncer(fakeGCE negtypes.NetworkEndpointGroupCloud, negTyp
 	return negsyncer, transactionSyncer
 }
 
-func copyMap(endpointMap map[string]negtypes.NetworkEndpointSet) map[string]negtypes.NetworkEndpointSet {
-	ret := map[string]negtypes.NetworkEndpointSet{}
-	for k, v := range endpointMap {
-		ret[k] = negtypes.NewNetworkEndpointSet(v.List()...)
-	}
-	return ret
-}
-
 func generateTransaction(table networkEndpointTransactionTable, entry transactionEntry, initialIp net.IP, num int, instance string, targetPort string) {
 	endpointSet := generateEndpointSet(initialIp, num, instance, targetPort)
 	for _, encodedEndpoint := range endpointSet.List() {
@@ -1539,7 +1532,6 @@ func (r *testRetryHandler) Retry() error {
 }
 
 func (r *testRetryHandler) Reset() {
-	return
 }
 
 type testReflector struct {

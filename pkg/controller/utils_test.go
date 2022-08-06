@@ -34,10 +34,6 @@ import (
 	"k8s.io/ingress-gce/pkg/utils"
 )
 
-// Pods created in loops start from this time, for routines that
-// sort on timestamp.
-var firstPodCreationTime = time.Date(2006, 01, 02, 15, 04, 05, 0, time.UTC)
-
 func TestZoneListing(t *testing.T) {
 	lbc := newLoadBalancerController()
 	zoneToNode := map[string][]string{
@@ -112,10 +108,6 @@ func addNodes(lbc *LoadBalancerController, zoneToNode map[string][]string) {
 			lbc.nodeLister.Add(n)
 		}
 	}
-}
-
-func getProbePath(p *api_v1.Probe) string {
-	return p.Handler.HTTPGet.Path
 }
 
 func TestAddInstanceGroupsAnnotation(t *testing.T) {

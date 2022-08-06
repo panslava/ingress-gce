@@ -101,7 +101,7 @@ func (l *L7) ensureRedirectURLMap() error {
 	// Cannot enable on older naming schemes
 	if !namerSupported {
 		if expectedMap != nil {
-			return fmt.Errorf("error: cannot enable HTTPS Redirects with the V1 Ingress naming scheme.  Please recreate your ingress to use the newest naming scheme.")
+			return fmt.Errorf("error: cannot enable HTTPS Redirects with the V1 Ingress naming scheme.  Please recreate your ingress to use the newest naming scheme")
 		}
 		return nil
 	}

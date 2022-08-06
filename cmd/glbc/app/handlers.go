@@ -90,7 +90,6 @@ func healthCheckHandler(checker func() context.HealthCheckResults) http.HandlerF
 		}
 
 		w.Write([]byte(s.String()))
-		return
 	}
 }
 

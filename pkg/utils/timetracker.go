@@ -46,7 +46,6 @@ func (t *TimeTracker) Set(timestamp time.Time) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 	t.timestamp = timestamp
-	return
 }
 
 func NewTimeTracker() TimeTracker {

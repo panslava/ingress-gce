@@ -22,7 +22,6 @@ import (
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	"github.com/google/go-cmp/cmp"
-	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/ingress-gce/pkg/annotations"
@@ -97,7 +96,7 @@ func (l *L7) checkForwardingRule(protocol namer.NamerProtocol, name, proxyLink, 
 			return nil, err
 		}
 		existing = nil
-		l.recorder.Eventf(l.runtimeInfo.Ingress, corev1.EventTypeNormal, events.SyncIngress, "ForwardingRule %q deleted", key.Name)
+		l.recorder.Eventf(l.runtimeInfo.Ingress, v1.EventTypeNormal, events.SyncIngress, "ForwardingRule %q deleted", key.Name)
 	}
 	if existing == nil {
 		// This is a special case where exactly one of http or https forwarding rule
@@ -121,7 +120,7 @@ func (l *L7) checkForwardingRule(protocol namer.NamerProtocol, name, proxyLink, 
 		if err = composite.CreateForwardingRule(l.cloud, key, fr); err != nil {
 			return nil, err
 		}
-		l.recorder.Eventf(l.runtimeInfo.Ingress, corev1.EventTypeNormal, events.SyncIngress, "ForwardingRule %q created", key.Name)
+		l.recorder.Eventf(l.runtimeInfo.Ingress, v1.EventTypeNormal, events.SyncIngress, "ForwardingRule %q created", key.Name)
 
 		key, err = l.CreateKey(name)
 		if err != nil {
@@ -180,7 +179,7 @@ func (l *L7) getEffectiveIP() (string, bool, error) {
 		// till the Ingress is torn down.
 		// TODO(shance): Replace version
 		if ip, err := composite.GetAddress(l.cloud, key, meta.VersionGA); err != nil || ip == nil {
-			return "", false, fmt.Errorf("the given static IP name %v doesn't translate to an existing static IP.",
+			return "", false, fmt.Errorf("the given static IP name %v doesn't translate to an existing static IP",
 				l.runtimeInfo.StaticIPName)
 		} else {
 			l.runtimeInfo.StaticIPSubnet = ip.Subnetwork
@@ -247,7 +246,7 @@ func (l *L4) ensureForwardingRule(loadBalancerName, bsLink string, options gce.I
 	frDesc, err := utils.MakeL4LBServiceDescription(utils.ServiceKeyFunc(l.Service.Namespace, l.Service.Name), ipToUse,
 		version, false, utils.ILB)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to compute description for forwarding rule %s, err: %w", loadBalancerName,
+		return nil, fmt.Errorf("failed to compute description for forwarding rule %s, err: %w", loadBalancerName,
 			err)
 	}
 
@@ -287,7 +286,7 @@ func (l *L4) ensureForwardingRule(loadBalancerName, bsLink string, options gce.I
 		if err = utils.IgnoreHTTPNotFound(composite.DeleteForwardingRule(l.cloud, key, version)); err != nil {
 			return nil, err
 		}
-		l.recorder.Eventf(l.Service, corev1.EventTypeNormal, events.SyncIngress, "ForwardingRule %q deleted", key.Name)
+		l.recorder.Eventf(l.Service, v1.EventTypeNormal, events.SyncIngress, "ForwardingRule %q deleted", key.Name)
 	}
 	klog.V(2).Infof("ensureForwardingRule: Creating/Recreating forwarding rule - %s", fr.Name)
 	if err = composite.CreateForwardingRule(l.cloud, key, fr); err != nil {
@@ -373,7 +372,7 @@ func (l4netlb *L4NetLB) ensureExternalForwardingRule(bsLink string) (*composite.
 	serviceKey := utils.ServiceKeyFunc(l4netlb.Service.Namespace, l4netlb.Service.Name)
 	frDesc, err := utils.MakeL4LBServiceDescription(serviceKey, ipToUse, version, false, utils.XLB)
 	if err != nil {
-		return nil, IPAddrUndefined, fmt.Errorf("Failed to compute description for forwarding rule %s, err: %w", frName,
+		return nil, IPAddrUndefined, fmt.Errorf("failed to compute description for forwarding rule %s, err: %w", frName,
 			err)
 	}
 	fr := &composite.ForwardingRule{
@@ -409,7 +408,7 @@ func (l4netlb *L4NetLB) ensureExternalForwardingRule(bsLink string) (*composite.
 		if err = utils.IgnoreHTTPNotFound(composite.DeleteForwardingRule(l4netlb.cloud, key, version)); err != nil {
 			return nil, IPAddrUndefined, err
 		}
-		l4netlb.recorder.Eventf(l4netlb.Service, corev1.EventTypeNormal, events.SyncIngress, "ForwardingRule %q deleted", key.Name)
+		l4netlb.recorder.Eventf(l4netlb.Service, v1.EventTypeNormal, events.SyncIngress, "ForwardingRule %q deleted", key.Name)
 	}
 	klog.V(2).Infof("ensureExternalForwardingRule: Creating/Recreating forwarding rule - %s", fr.Name)
 	if err = composite.CreateForwardingRule(l4netlb.cloud, key, fr); err != nil {

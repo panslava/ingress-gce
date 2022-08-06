@@ -400,7 +400,7 @@ func (g *GCLB) CheckRedirectUrlMapDeletion(ctx context.Context, c cloud.Cloud) e
 					return err
 				}
 			} else {
-				return fmt.Errorf("Redirect URL Map still exists: %v", k)
+				return fmt.Errorf("redirect URL Map still exists: %v", k)
 			}
 		}
 	}

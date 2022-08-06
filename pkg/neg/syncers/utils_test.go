@@ -1071,11 +1071,10 @@ func TestNegObjectCrd(t *testing.T) {
 		}
 
 		if neg == nil {
-			t.Errorf("Failed to find neg")
+			t.Fatalf("Failed to find neg")
 		}
 
-		var expectedNegObj negv1beta1.NegObjectReference
-		expectedNegObj = negv1beta1.NegObjectReference{
+		expectedNegObj := negv1beta1.NegObjectReference{
 			Id:                  fmt.Sprint(neg.Id),
 			SelfLink:            neg.SelfLink,
 			NetworkEndpointType: negv1beta1.NetworkEndpointType(networkEndpointType),

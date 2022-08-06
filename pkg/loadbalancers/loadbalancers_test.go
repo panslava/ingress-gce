@@ -50,7 +50,6 @@ const (
 	clusterName    = "uid1"
 	ingressName    = "test"
 	namespace      = "namespace1"
-	defaultZone    = "zone-a"
 	defaultVersion = meta.VersionGA
 	defaultScope   = meta.Global
 )
@@ -314,7 +313,9 @@ func verifyHTTPSForwardingRuleAndProxyLinks(t *testing.T, j *testJig, l7 *L7) {
 		t.Fatal(err)
 	}
 	um, err := composite.GetUrlMap(j.fakeGCE, key, versions.UrlMap)
-
+	if err != nil {
+		t.Fatalf("composite.GetUrlMap(_, %v, %v) returned error %v, want nil", key, versions.UrlMap, err)
+	}
 	tpsName := l7.namer.TargetProxy(namer_util.HTTPSProtocol)
 	key.Name = tpsName
 	tps, err := composite.GetTargetHttpsProxy(j.fakeGCE, key, versions.TargetHttpsProxy)
@@ -348,6 +349,9 @@ func verifyHTTPForwardingRuleAndProxyLinks(t *testing.T, j *testJig, l7 *L7, ip 
 		t.Fatal(err)
 	}
 	um, err := composite.GetUrlMap(j.fakeGCE, key, versions.UrlMap)
+	if err != nil {
+		t.Fatalf("composite.GetUrlMap(_, %v, %v) returned error %v, want nil", key, versions.UrlMap, err)
+	}
 	tpName := l7.namer.TargetProxy(namer_util.HTTPProtocol)
 	key.Name = tpName
 	tps, err := composite.GetTargetHttpProxy(j.fakeGCE, key, versions.TargetHttpProxy)
@@ -552,7 +556,7 @@ func TestMultipleCertRetentionAfterRestart(t *testing.T) {
 	verifyCertAndProxyLink(expectCerts, expectCerts, j, t)
 }
 
-//TestUpgradeToNewCertNames verifies that certs uploaded using the old naming convention
+// TestUpgradeToNewCertNames verifies that certs uploaded using the old naming convention
 // are picked up and deleted when upgrading to the new scheme.
 func TestUpgradeToNewCertNames(t *testing.T) {
 	j := newTestJig(t)
@@ -1408,16 +1412,6 @@ func TestInvalidClusterNameChange(t *testing.T) {
 
 func createCert(key string, contents string, name string) *translator.TLSCerts {
 	return &translator.TLSCerts{Key: key, Cert: contents, Name: name, CertHash: translator.GetCertHash(contents)}
-}
-
-func syncPool(j *testJig, t *testing.T, lbInfo *L7RuntimeInfo) {
-	if _, err := j.pool.Ensure(lbInfo); err != nil {
-		t.Fatalf("j.pool.Ensure() = err %v", err)
-	}
-	l7, err := j.pool.Ensure(lbInfo)
-	if err != nil || l7 == nil {
-		t.Fatalf("Expected l7 not created")
-	}
 }
 
 func TestList(t *testing.T) {

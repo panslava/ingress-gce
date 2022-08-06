@@ -121,7 +121,7 @@ func (l *L7) createSslCertificates(existingCerts, translatorCerts []*composite.S
 
 	// Save the old certs for cleanup after we update the target proxy.
 	if len(failedCerts) > 0 {
-		return result, fmt.Errorf("Cert creation failures - %s", strings.Join(failedCerts, ","))
+		return result, fmt.Errorf("cert creation failures - %s", strings.Join(failedCerts, ","))
 	}
 	return result, nil
 }

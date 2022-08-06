@@ -1153,7 +1153,7 @@ func TestEnsureInternalLoadBalancerModifyProtocol(t *testing.T) {
 	}
 	assertInternalLbResources(t, svc, l, nodeNames, result.Annotations)
 	// Make sure the old forwarding rule is deleted
-	fwdRule, err = composite.GetForwardingRule(l.cloud, key, meta.VersionGA)
+	_, err = composite.GetForwardingRule(l.cloud, key, meta.VersionGA)
 	if !utils.IsNotFoundError(err) {
 		t.Errorf("Failed to delete ForwardingRule %s", frName)
 	}
@@ -1169,10 +1169,7 @@ func TestEnsureInternalLoadBalancerModifyProtocol(t *testing.T) {
 	}
 
 	// Delete the service
-	result = l.EnsureInternalLoadBalancerDeleted(svc)
-	if err != nil {
-		t.Errorf("Unexpected error %v", err)
-	}
+	l.EnsureInternalLoadBalancerDeleted(svc)
 	assertInternalLbResourcesDeleted(t, svc, true, l)
 }
 

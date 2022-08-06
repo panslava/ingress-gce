@@ -75,10 +75,10 @@ func NewNodeController(ctx *context.ControllerContext, stopCh chan struct{}) *No
 func (c *NodeController) Run() {
 	start := time.Now()
 	for !c.hasSynced() {
-		klog.V(2).Infof("Waiting for hasSynced (%s elapsed)", time.Now().Sub(start))
+		klog.V(2).Infof("Waiting for hasSynced (%s elapsed)", time.Since(start))
 		time.Sleep(1 * time.Second)
 	}
-	klog.V(2).Infof("Caches synced (took %s)", time.Now().Sub(start))
+	klog.V(2).Infof("Caches synced (took %s)", time.Since(start))
 	go c.queue.Run()
 	<-c.stopCh
 	c.Shutdown()

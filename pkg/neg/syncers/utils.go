@@ -24,7 +24,6 @@ import (
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	apiv1 "k8s.io/api/core/v1"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -325,7 +324,7 @@ func retrieveExistingZoneNetworkEndpointMap(negName string, zoneGetter negtypes.
 				klog.Infof("Ignoring NotFound error for NEG %q in zone %q", negName, zone)
 				continue
 			}
-			return nil, fmt.Errorf("Failed to lookup NEG in zone %q, candidate zones %v, err - %v", zone, candidateZonesMap, err)
+			return nil, fmt.Errorf("failed to lookup NEG in zone %q, candidate zones %v, err - %v", zone, candidateZonesMap, err)
 		}
 		zoneNetworkEndpointMap[zone] = negtypes.NewNetworkEndpointSet()
 		for _, ne := range networkEndpointsWithHealthStatus {
@@ -387,9 +386,9 @@ func shouldPodBeInNeg(podLister cache.Indexer, namespace, name string) bool {
 	if !exists {
 		return false
 	}
-	pod, ok := obj.(*v1.Pod)
+	pod, ok := obj.(*apiv1.Pod)
 	if !ok {
-		klog.Errorf("Failed to convert obj %s to v1.Pod. The object type is %T", key, obj)
+		klog.Errorf("Failed to convert obj %s to apiv1.Pod. The object type is %T", key, obj)
 		return false
 	}
 
@@ -414,9 +413,9 @@ func shouldPodBeInDestinationRuleSubset(podLister cache.Indexer, namespace, name
 	if !exists {
 		return false
 	}
-	pod, ok := obj.(*v1.Pod)
+	pod, ok := obj.(*apiv1.Pod)
 	if !ok {
-		klog.Errorf("Failed to convert obj %s to v1.Pod. The object type is %T", key, obj)
+		klog.Errorf("Failed to convert obj %s to apiv1.Pod. The object type is %T", key, obj)
 		return false
 	}
 

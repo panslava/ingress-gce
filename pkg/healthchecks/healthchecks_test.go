@@ -30,7 +30,6 @@ import (
 	computealpha "google.golang.org/api/compute/v0.alpha"
 	computebeta "google.golang.org/api/compute/v0.beta"
 	"google.golang.org/api/compute/v1"
-	api_v1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -498,41 +497,41 @@ func TestApplyProbeSettingsToHC(t *testing.T) {
 	for _, tc := range []struct {
 		desc  string
 		neg   bool
-		probe *api_v1.Probe
+		probe *v1.Probe
 		want  ws
 	}{
 		{
 			desc:  "no override",
-			probe: &api_v1.Probe{},
+			probe: &v1.Probe{},
 			want:  ws{timeoutSec: 60, checkIntervalSec: 60, port: 8080},
 		},
 		{
 			desc: "override path",
-			probe: &api_v1.Probe{
+			probe: &v1.Probe{
 				TimeoutSeconds: 1234,
-				Handler: api_v1.Handler{
-					HTTPGet: &api_v1.HTTPGetAction{Path: "/override"},
+				Handler: v1.Handler{
+					HTTPGet: &v1.HTTPGetAction{Path: "/override"},
 				},
 			},
 			want: ws{path: "/override", timeoutSec: 1234, checkIntervalSec: 60, port: 8080},
 		},
 		{
 			desc: "override host",
-			probe: &api_v1.Probe{
+			probe: &v1.Probe{
 				TimeoutSeconds: 1234,
-				Handler: api_v1.Handler{
-					HTTPGet: &api_v1.HTTPGetAction{Host: "foo.com"},
+				Handler: v1.Handler{
+					HTTPGet: &v1.HTTPGetAction{Host: "foo.com"},
 				},
 			},
 			want: ws{host: "foo.com", path: "/", timeoutSec: 1234, checkIntervalSec: 60, port: 8080},
 		},
 		{
 			desc: "override host (via header)",
-			probe: &api_v1.Probe{
+			probe: &v1.Probe{
 				TimeoutSeconds: 1234,
-				Handler: api_v1.Handler{
-					HTTPGet: &api_v1.HTTPGetAction{
-						HTTPHeaders: []api_v1.HTTPHeader{{Name: "Host", Value: "foo.com"}},
+				Handler: v1.Handler{
+					HTTPGet: &v1.HTTPGetAction{
+						HTTPHeaders: []v1.HTTPHeader{{Name: "Host", Value: "foo.com"}},
 					},
 				},
 			},
@@ -541,21 +540,21 @@ func TestApplyProbeSettingsToHC(t *testing.T) {
 		{
 			// TODO(bowei): this is somewhat subtle behavior.
 			desc: "ignore port",
-			probe: &api_v1.Probe{
+			probe: &v1.Probe{
 				TimeoutSeconds: 1234,
-				Handler: api_v1.Handler{
-					HTTPGet: &api_v1.HTTPGetAction{Port: intstr.FromInt(3000)},
+				Handler: v1.Handler{
+					HTTPGet: &v1.HTTPGetAction{Port: intstr.FromInt(3000)},
 				},
 			},
 			want: ws{path: "/", timeoutSec: 1234, checkIntervalSec: 60, port: 8080},
 		},
 		{
 			desc: "override timeouts",
-			probe: &api_v1.Probe{
+			probe: &v1.Probe{
 				TimeoutSeconds: 50,
 				PeriodSeconds:  100,
-				Handler: api_v1.Handler{
-					HTTPGet: &api_v1.HTTPGetAction{Port: intstr.FromInt(3000)},
+				Handler: v1.Handler{
+					HTTPGet: &v1.HTTPGetAction{Port: intstr.FromInt(3000)},
 				},
 			},
 			want: ws{path: "/", timeoutSec: 50, checkIntervalSec: 160, port: 8080},
@@ -563,11 +562,11 @@ func TestApplyProbeSettingsToHC(t *testing.T) {
 		{
 			desc: "override timeouts (neg)",
 			neg:  true,
-			probe: &api_v1.Probe{
+			probe: &v1.Probe{
 				TimeoutSeconds: 50,
 				PeriodSeconds:  100,
-				Handler: api_v1.Handler{
-					HTTPGet: &api_v1.HTTPGetAction{Port: intstr.FromInt(3000)},
+				Handler: v1.Handler{
+					HTTPGet: &v1.HTTPGetAction{Port: intstr.FromInt(3000)},
 				},
 			},
 			want: ws{path: "/", timeoutSec: 50, checkIntervalSec: 100, port: 0},
@@ -776,9 +775,7 @@ func (*syncSPFixture) hc() *compute.HealthCheck {
 func (f *syncSPFixture) hcs() *compute.HealthCheck  { return f.toS(f.hc()) }
 func (f *syncSPFixture) hc2() *compute.HealthCheck  { return f.to2(f.hc()) }
 func (f *syncSPFixture) negs() *compute.HealthCheck { return f.toS(f.neg()) }
-func (f *syncSPFixture) neg2() *compute.HealthCheck { return f.to2(f.neg()) }
 func (f *syncSPFixture) ilbs() *compute.HealthCheck { return f.toS(f.ilb()) }
-func (f *syncSPFixture) ilb2() *compute.HealthCheck { return f.to2(f.ilb()) }
 
 func (f *syncSPFixture) toS(h *compute.HealthCheck) *compute.HealthCheck {
 	h.Type = "HTTPS"

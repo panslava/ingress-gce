@@ -19,7 +19,7 @@ package translator
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"reflect"
 	"testing"
 	"time"
@@ -517,7 +517,7 @@ func TestGetProbeCrossNamespace(t *testing.T) {
 			// path is different. If this pod was created in the same ns, it
 			// would become the health check.
 			Labels:            map[string]string{"app-3001": "test"},
-			Name:              fmt.Sprintf("test-pod-new-ns"),
+			Name:              "test-pod-new-ns",
 			Namespace:         "new-ns",
 			CreationTimestamp: metav1.NewTime(firstPodCreationTime.Add(-time.Duration(time.Hour))),
 		},
@@ -1039,9 +1039,9 @@ func createEndpointSlice(serviceName string, sliceSuffix string, portName string
 func ingressFromFile(t *testing.T, filename string) *v1.Ingress {
 	t.Helper()
 
-	data, err := ioutil.ReadFile("testdata/" + filename)
+	data, err := os.ReadFile("testdata/" + filename)
 	if err != nil {
-		t.Fatalf("ioutil.ReadFile(%q) = %v", filename, err)
+		t.Fatalf("os.ReadFile(%q) = %v", filename, err)
 	}
 	ing, err := test.DecodeIngress(data)
 	if err != nil {
@@ -1051,7 +1051,7 @@ func ingressFromFile(t *testing.T, filename string) *v1.Ingress {
 }
 
 func gceURLMapFromFile(t *testing.T, filename string) *utils.GCEURLMap {
-	data, err := ioutil.ReadFile("testdata/" + filename)
+	data, err := os.ReadFile("testdata/" + filename)
 	if err != nil {
 		t.Fatalf("ioutil.ReadFile(%q) = %v", filename, err)
 	}
@@ -1060,14 +1060,6 @@ func gceURLMapFromFile(t *testing.T, filename string) *utils.GCEURLMap {
 		t.Fatalf("json.Unmarshal(%q) = %v", filename, err)
 	}
 	return v
-}
-
-func int64ToMap(l []int64) map[int64]bool {
-	ret := map[int64]bool{}
-	for _, i := range l {
-		ret[i] = true
-	}
-	return ret
 }
 
 func TestSetTrafficScaling(t *testing.T) {

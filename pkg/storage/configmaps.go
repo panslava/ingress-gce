@@ -86,7 +86,7 @@ func (c *ConfigMapVault) Put(key, val string, createOnly bool) error {
 	if err == nil && exists {
 		data := item.(*api_v1.ConfigMap).Data
 		if createOnly {
-			return fmt.Errorf("failed to create configmap %v, it is already existed with data %v.", cfgMapKey, data)
+			return fmt.Errorf("failed to create configmap %v, it is already existed with data %v", cfgMapKey, data)
 		}
 		existingVal, ok := data[key]
 		if ok && existingVal == val {

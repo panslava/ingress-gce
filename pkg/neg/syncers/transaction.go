@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
-	apiv1 "k8s.io/api/core/v1"
 	corev1 "k8s.io/api/core/v1"
 	discovery "k8s.io/api/discovery/v1"
 	"k8s.io/ingress-gce/pkg/utils/endpointslices"
@@ -231,7 +230,7 @@ func (s *transactionSyncer) syncInternalImpl() error {
 		}
 	} else {
 		ep, exists, err := s.endpointLister.Get(
-			&apiv1.Endpoints{
+			&corev1.Endpoints{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      s.Name,
 					Namespace: s.Namespace,
@@ -245,7 +244,7 @@ func (s *transactionSyncer) syncInternalImpl() error {
 			s.logger.Info("Endpoint does not exist. Skipping NEG sync", "endpoint", klog.KRef(s.Namespace, s.Name))
 			return nil
 		}
-		endpointsData := negtypes.EndpointsDataFromEndpoints(ep.(*apiv1.Endpoints))
+		endpointsData := negtypes.EndpointsDataFromEndpoints(ep.(*corev1.Endpoints))
 		targetMap, endpointPodMap, err = s.endpointsCalculator.CalculateEndpoints(endpointsData, currentMap)
 		if err != nil {
 			return fmt.Errorf("endpoints calculation error in mode %q, err: %w", s.endpointsCalculator.Mode(), err)
@@ -397,9 +396,9 @@ func (s *transactionSyncer) operationInternal(operation transactionOp, zone stri
 	}
 
 	if err == nil {
-		s.recordEvent(apiv1.EventTypeNormal, operation.String(), fmt.Sprintf("%s %d network endpoint(s) (NEG %q in zone %q)", operation.String(), len(networkEndpointMap), s.NegSyncerKey.NegName, zone))
+		s.recordEvent(corev1.EventTypeNormal, operation.String(), fmt.Sprintf("%s %d network endpoint(s) (NEG %q in zone %q)", operation.String(), len(networkEndpointMap), s.NegSyncerKey.NegName, zone))
 	} else {
-		s.recordEvent(apiv1.EventTypeWarning, operation.String()+"Failed", fmt.Sprintf("Failed to %s %d network endpoint(s) (NEG %q in zone %q): %v", operation.String(), len(networkEndpointMap), s.NegSyncerKey.NegName, zone, err))
+		s.recordEvent(corev1.EventTypeWarning, operation.String()+"Failed", fmt.Sprintf("Failed to %s %d network endpoint(s) (NEG %q in zone %q): %v", operation.String(), len(networkEndpointMap), s.NegSyncerKey.NegName, zone, err))
 	}
 
 	// WARNING: commitTransaction must be called at last for analyzing the operation result
@@ -445,7 +444,7 @@ func (s *transactionSyncer) commitTransaction(err error, networkEndpointMap map[
 
 	if needRetry {
 		if retryErr := s.retry.Retry(); retryErr != nil {
-			s.recordEvent(apiv1.EventTypeWarning, "RetryFailed", fmt.Sprintf("Failed to retry NEG sync for %q: %v", s.NegSyncerKey.String(), retryErr))
+			s.recordEvent(corev1.EventTypeWarning, "RetryFailed", fmt.Sprintf("Failed to retry NEG sync for %q: %v", s.NegSyncerKey.String(), retryErr))
 		}
 		return
 	}
@@ -542,7 +541,6 @@ func mergeTransactionIntoZoneEndpointMap(endpointMap map[string]negtypes.Network
 			endpointMap[entry.Zone].Delete(endpointKey)
 		}
 	}
-	return
 }
 
 // logStats logs aggregated stats of the input endpointMap
@@ -623,7 +621,7 @@ func (s *transactionSyncer) updateStatus(syncErr error) {
 func getNegFromStore(svcNegLister cache.Indexer, namespace, negName string) (*negv1beta1.ServiceNetworkEndpointGroup, error) {
 	n, exists, err := svcNegLister.GetByKey(fmt.Sprintf("%s/%s", namespace, negName))
 	if err != nil {
-		return nil, fmt.Errorf("Error getting neg %s/%s from cache: %w", namespace, negName, err)
+		return nil, fmt.Errorf("error getting neg %s/%s from cache: %w", namespace, negName, err)
 	}
 	if !exists {
 		return nil, fmt.Errorf("neg %s/%s is not in store", namespace, negName)

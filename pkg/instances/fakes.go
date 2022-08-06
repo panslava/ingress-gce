@@ -65,7 +65,6 @@ type IGsToInstances map[*compute.InstanceGroup]sets.String
 
 // FakeInstanceGroups fakes out the instance groups api.
 type FakeInstanceGroups struct {
-	getResult             *compute.InstanceGroup
 	calls                 []int
 	zonesToIGsToInstances map[string]IGsToInstances
 	maxIGSize             int

@@ -18,11 +18,10 @@ package types
 
 import (
 	"context"
-
-	"k8s.io/ingress-gce/pkg/composite"
-
 	"fmt"
 	"net/http"
+
+	"k8s.io/ingress-gce/pkg/composite"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/filter"
@@ -76,10 +75,8 @@ func MockAggregatedListNetworkEndpointGroupHook(ctx context.Context, fl *filter.
 		switch res.Key.Type() {
 		case meta.Regional:
 			location = fmt.Sprintf("regions/%s", res.Key.Region)
-			break
 		case meta.Zonal:
 			location = fmt.Sprintf("zones/%s", res.Key.Zone)
-			break
 		case meta.Global:
 			location = string(meta.Global)
 		}

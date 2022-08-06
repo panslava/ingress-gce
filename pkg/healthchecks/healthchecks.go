@@ -153,7 +153,7 @@ func (h *HealthChecks) createILB(hc *translator.HealthCheck) error {
 	}
 	compositeType, err := composite.AlphaToHealthCheck(alpha)
 	if err != nil {
-		return fmt.Errorf("Error converting hc to composite: %w", err)
+		return fmt.Errorf("error converting hc to composite: %w", err)
 	}
 
 	cloud := h.cloud.(*gce.Cloud)
@@ -166,7 +166,7 @@ func (h *HealthChecks) createILB(hc *translator.HealthCheck) error {
 	compositeType.Region = key.Region
 	err = composite.CreateHealthCheck(cloud, key, compositeType)
 	if err != nil {
-		return fmt.Errorf("Error creating health check %v: %w", compositeType, err)
+		return fmt.Errorf("error creating health check %v: %w", compositeType, err)
 	}
 
 	return nil
@@ -218,11 +218,13 @@ func (h *HealthChecks) updateILB(hc *translator.HealthCheck) error {
 	}
 	compositeType, err := composite.AlphaToHealthCheck(alpha)
 	if err != nil {
-		return fmt.Errorf("Error converting newHC to composite: %w", err)
+		return fmt.Errorf("error converting newHC to composite: %w", err)
 	}
 	cloud := h.cloud.(*gce.Cloud)
 	key, err := composite.CreateKey(cloud, hc.Name, features.L7ILBScope())
-
+	if err != nil {
+		return fmt.Errorf("composite.CreateKey(_, %s, %v) returned error %w, want nil", hc.Name, features.L7ILBScope(), err)
+	}
 	// Update fields
 	compositeType.Version = features.L7ILBVersions().HealthCheck
 	compositeType.Region = key.Region
@@ -358,12 +360,18 @@ func (h *HealthChecks) Get(name string, version meta.Version, scope meta.KeyType
 			return nil, err
 		}
 		hc, err = utils.BetaToAlphaHealthCheck(betaHC)
+		if err != nil {
+			return nil, err
+		}
 	case meta.VersionGA:
 		v1hc, err := h.cloud.GetHealthCheck(name)
 		if err != nil {
 			return nil, err
 		}
 		hc, err = utils.V1ToAlphaHealthCheck(v1hc)
+		if err != nil {
+			return nil, err
+		}
 	default:
 		return nil, fmt.Errorf("unknown version %v", version)
 	}

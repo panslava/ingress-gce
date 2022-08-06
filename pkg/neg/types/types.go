@@ -210,7 +210,7 @@ func NewPortInfoMapWithDestinationRule(namespace, name string, svcPortTupleSet S
 		}
 	}
 	if len(duplicateSubset) != 0 {
-		return ret, fmt.Errorf("Duplicated subsets: %s", strings.Join(duplicateSubset, ", "))
+		return ret, fmt.Errorf("duplicated subsets: %s", strings.Join(duplicateSubset, ", "))
 	}
 	return ret, nil
 }
@@ -236,7 +236,7 @@ func (p1 PortInfoMap) Merge(p2 PortInfoMap) error {
 				return fmt.Errorf("for service port %v, Subset name in existing map is %q, but the merge map has %q", mapKey, existingPortInfo.Subset, portInfo.Subset)
 			}
 			if existingPortInfo.EpCalculatorMode != portInfo.EpCalculatorMode {
-				return fmt.Errorf("For service port %v, Existing map has Calculator mode %v, but the merge map has %v", mapKey, existingPortInfo.EpCalculatorMode, portInfo.EpCalculatorMode)
+				return fmt.Errorf("for service port %v, Existing map has Calculator mode %v, but the merge map has %v", mapKey, existingPortInfo.EpCalculatorMode, portInfo.EpCalculatorMode)
 			}
 			mergedInfo.ReadinessGate = existingPortInfo.ReadinessGate
 		}
@@ -401,7 +401,6 @@ func EndpointsDataFromEndpoints(ep *apiv1.Endpoints) []EndpointsData {
 
 // Converts API EndpointSlice list to the EndpointsData abstraction.
 // Terminating endpoints are ignored.
-//
 func EndpointsDataFromEndpointSlices(slices []*discovery.EndpointSlice) []EndpointsData {
 	result := make([]EndpointsData, 0, len(slices))
 	for _, slice := range slices {

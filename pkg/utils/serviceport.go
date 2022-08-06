@@ -88,7 +88,7 @@ func (sp *ServicePort) IGName() string {
 // BackendToServicePortID creates a ServicePortID from a given IngressBackend and namespace.
 func BackendToServicePortID(be v1.IngressBackend, namespace string) (ServicePortID, error) {
 	if be.Service == nil {
-		return ServicePortID{}, fmt.Errorf("Ingress Backend is not a service")
+		return ServicePortID{}, fmt.Errorf("ingress Backend is not a service")
 	}
 	return ServicePortID{
 		Service: types.NamespacedName{

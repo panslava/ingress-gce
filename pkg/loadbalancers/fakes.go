@@ -18,24 +18,13 @@ package loadbalancers
 
 import (
 	"context"
-	"fmt"
+
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	"google.golang.org/api/compute/v1"
 )
 
 const FakeCertQuota = 15
-
-var testIPManager = testIP{}
-
-type testIP struct {
-	start int
-}
-
-func (t *testIP) ip() string {
-	t.start++
-	return fmt.Sprintf("0.0.0.%v", t.start)
-}
 
 func InsertGlobalForwardingRuleHook(ctx context.Context, key *meta.Key, obj *compute.ForwardingRule, m *cloud.MockGlobalForwardingRules) (b bool, e error) {
 	if obj.IPAddress == "" {

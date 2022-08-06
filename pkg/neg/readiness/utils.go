@@ -83,7 +83,7 @@ func getPodFromStore(podLister cache.Indexer, namespace, name string) (pod *v1.P
 
 	pod, ok := obj.(*v1.Pod)
 	if !ok {
-		return nil, false, fmt.Errorf("Failed to convert obj type %T to *v1.Pod", obj)
+		return nil, false, fmt.Errorf("failed to convert obj type %T to *v1.Pod", obj)
 	}
 	return pod, true, nil
 }

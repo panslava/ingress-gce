@@ -77,7 +77,7 @@ func IngressClassEnabled(client kubernetes.Interface) bool {
 				return true, nil
 			}
 		}
-		return true, fmt.Errorf("Ingress Class API is not supported")
+		return true, fmt.Errorf("ingress Class API is not supported")
 	})
 
 	if err != nil {

@@ -125,7 +125,7 @@ func (l4netlb *L4NetLB) EnsureFrontend(nodeNames []string, svc *corev1.Service) 
 
 	if hcResult.Err != nil {
 		result.GCEResourceInError = hcResult.GceResourceInError
-		result.Error = fmt.Errorf("Failed to ensure health check %s - %w", hcResult.HCName, hcResult.Err)
+		result.Error = fmt.Errorf("failed to ensure health check %s - %w", hcResult.HCName, hcResult.Err)
 		return result
 	}
 	result.Annotations[annotations.HealthcheckKey] = hcResult.HCName
@@ -136,7 +136,7 @@ func (l4netlb *L4NetLB) EnsureFrontend(nodeNames []string, svc *corev1.Service) 
 	bs, err := l4netlb.backendPool.EnsureL4BackendService(name, hcResult.HCLink, string(protocol), string(l4netlb.Service.Spec.SessionAffinity), string(cloud.SchemeExternal), l4netlb.NamespacedName, meta.VersionGA)
 	if err != nil {
 		result.GCEResourceInError = annotations.BackendServiceResource
-		result.Error = fmt.Errorf("Failed to ensure backend service %s - %w", name, err)
+		result.Error = fmt.Errorf("failed to ensure backend service %s - %w", name, err)
 		return result
 	}
 	result.Annotations[annotations.BackendServiceKey] = name
@@ -145,7 +145,7 @@ func (l4netlb *L4NetLB) EnsureFrontend(nodeNames []string, svc *corev1.Service) 
 		// User can misconfigure the forwarding rule if Network Tier will not match service level Network Tier.
 		result.MetricsState.IsUserError = utils.IsUserError(err)
 		result.GCEResourceInError = annotations.ForwardingRuleResource
-		result.Error = fmt.Errorf("Failed to ensure forwarding rule - %w", err)
+		result.Error = fmt.Errorf("failed to ensure forwarding rule - %w", err)
 		return result
 	}
 	if fr.IPProtocol == string(corev1.ProtocolTCP) {

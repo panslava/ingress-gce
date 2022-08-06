@@ -17,7 +17,6 @@ limitations under the License.
 package endpointslices
 
 import (
-	"errors"
 	"fmt"
 
 	discovery "k8s.io/api/discovery/v1"
@@ -36,7 +35,7 @@ Prepares Endpoint Slices Service key.
 func EndpointSlicesServiceKey(slice *discovery.EndpointSlice) (string, error) {
 	serviceName, ok := slice.Labels[discovery.LabelServiceName]
 	if !ok {
-		return "", errors.New(fmt.Sprintf("Failed to find a service label inside endpoint slice %v", slice))
+		return "", fmt.Errorf("failed to find a service label inside endpoint slice %v", slice)
 	}
 	return FormatEndpointSlicesServiceKey(slice.GetNamespace(), serviceName), nil
 }

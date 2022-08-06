@@ -67,7 +67,10 @@ func RunHTTPServer(ctx context.Context) {
 		}
 
 		<-ctx.Done()
-		server.Shutdown(ctx)
+		err = server.Shutdown(ctx)
+		if err != nil {
+			klog.Fatal(err)
+		}
 	}()
 
 	go func() {
@@ -82,7 +85,10 @@ func RunHTTPServer(ctx context.Context) {
 		}
 
 		<-ctx.Done()
-		server.Shutdown(ctx)
+		err = server.Shutdown(ctx)
+		if err != nil {
+			klog.Fatal(err)
+		}
 	}()
 
 	<-ctx.Done()

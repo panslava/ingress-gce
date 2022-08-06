@@ -117,8 +117,5 @@ func (v *securityPolicyValidator) CheckResponse(host, path string, resp *http.Re
 // HasBetaResource implements Feature. SecurityPolicy requires Beta
 // resource.
 func (v *securityPolicyValidator) HasBetaResource(resourceType string) bool {
-	if resourceType == "backendService" {
-		return true
-	}
-	return false
+	return resourceType == "backendService"
 }

@@ -29,7 +29,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	apimachinerytypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/dynamic"
@@ -87,9 +86,6 @@ type Controller struct {
 	endpointQueue workqueue.RateLimitingInterface
 	// nodeQueue takes node name as work item.
 	nodeQueue workqueue.RateLimitingInterface
-
-	// destinationRuleQueue takes Istio DestinationRule key as work item. DestinationRule key with format "namespace/name"
-	destinationRuleQueue workqueue.RateLimitingInterface
 
 	// syncTracker tracks the latest time that service and endpoint changes are processed
 	syncTracker utils.TimeTracker
@@ -645,7 +641,7 @@ func (c *Controller) mergeDefaultBackendServicePortInfoMap(key string, service *
 	if !foundNEGAnnotation {
 		return nil
 	}
-	if negAnnotation.Ingress == false {
+	if !negAnnotation.Ingress == false {
 		return nil
 	}
 	return scanIngress(utils.IsGCEIngress)
@@ -739,6 +735,9 @@ func (c *Controller) syncDestinationRuleNegStatusAnnotation(namespace, destinati
 	}
 	dsClient := c.destinationRuleClient.Namespace(namespace)
 	destinationRule, err := dsClient.Get(context.TODO(), destinationRuleName, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
 	drAnnotations := destinationRule.GetAnnotations()
 	if drAnnotations == nil {
 		drAnnotations = make(map[string]string)
@@ -769,7 +768,7 @@ func (c *Controller) syncDestinationRuleNegStatusAnnotation(namespace, destinati
 		return err
 	}
 	c.logger.V(2).Info("Updating NEG visibility annotation on Istio:DestinationRule", "annotation", string(patchBytes), "namespace", namespace, "destinationRuleName", destinationRuleName)
-	_, err = dsClient.Patch(context.TODO(), destinationRuleName, apimachinerytypes.MergePatchType, patchBytes, metav1.PatchOptions{})
+	_, err = dsClient.Patch(context.TODO(), destinationRuleName, types.MergePatchType, patchBytes, metav1.PatchOptions{})
 	return err
 }
 
@@ -952,8 +951,8 @@ func gatherPortMappingFromService(svc *apiv1.Service) negtypes.SvcPortTupleSet {
 
 // getDestinationRulesFromStore returns all DestinationRules that referring service svc.
 // Please notice that a DestionationRule can point to a service in a different namespace.
-func getDestinationRulesFromStore(store cache.Store, svc *apiv1.Service, logger klog.Logger) (drs map[apimachinerytypes.NamespacedName]*istioV1alpha3.DestinationRule) {
-	drs = make(map[apimachinerytypes.NamespacedName]*istioV1alpha3.DestinationRule)
+func getDestinationRulesFromStore(store cache.Store, svc *apiv1.Service, logger klog.Logger) (drs map[types.NamespacedName]*istioV1alpha3.DestinationRule) {
+	drs = make(map[types.NamespacedName]*istioV1alpha3.DestinationRule)
 	for _, obj := range store.List() {
 		drUnstructed := obj.(*unstructured.Unstructured)
 		targetServiceNamespace, drHost, dr, err := castToDestinationRule(drUnstructed)
@@ -964,7 +963,7 @@ func getDestinationRulesFromStore(store cache.Store, svc *apiv1.Service, logger 
 
 		if targetServiceNamespace == svc.Namespace && drHost == svc.Name {
 			// We want to return DestinationRule namespace but not the target service namespace.
-			drs[apimachinerytypes.NamespacedName{Namespace: drUnstructed.GetNamespace(), Name: drUnstructed.GetName()}] = dr
+			drs[types.NamespacedName{Namespace: drUnstructed.GetNamespace(), Name: drUnstructed.GetName()}] = dr
 		}
 	}
 	return

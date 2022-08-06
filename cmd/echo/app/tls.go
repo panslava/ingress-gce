@@ -23,8 +23,8 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
-	"io/ioutil"
 	"math/big"
+	"os"
 	"time"
 
 	"k8s.io/klog/v2"
@@ -37,21 +37,21 @@ func createCert() (certFilePath string, keyFilepath string) {
 		klog.Fatal(err)
 	}
 
-	tmpCert, err := ioutil.TempFile("", "server.crt")
+	tmpCert, err := os.CreateTemp("", "server.crt")
 	if err != nil {
 		klog.Fatal(err)
 	}
 
-	tmpKey, err := ioutil.TempFile("", "server.key")
+	tmpKey, err := os.CreateTemp("", "server.key")
 	if err != nil {
 		klog.Fatal(err)
 	}
 
-	if err := ioutil.WriteFile(tmpCert.Name(), cert, 0644); err != nil {
+	if err := os.WriteFile(tmpCert.Name(), cert, 0644); err != nil {
 		klog.Fatal(err)
 	}
 
-	if err := ioutil.WriteFile(tmpKey.Name(), key, 0644); err != nil {
+	if err := os.WriteFile(tmpKey.Name(), key, 0644); err != nil {
 		klog.Fatal(err)
 	}
 
@@ -93,11 +93,17 @@ func generateInsecureCertAndKey(organization string, validFrom time.Time, validF
 		klog.Fatalf("Failed to create certificate: %s", err)
 	}
 	var certBytes bytes.Buffer
-	pem.Encode(&certBytes, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
-
+	pb := &pem.Block{Type: "CERTIFICATE", Bytes: derBytes}
+	err = pem.Encode(&certBytes, pb)
+	if err != nil {
+		klog.Errorf("pem.Encode(%v, %v) returned error %v, want nil", &certBytes, pb, err)
+	}
 	var keyBytes bytes.Buffer
-	pb := &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)}
-	pem.Encode(&keyBytes, pb)
+	pb = &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)}
+	err = pem.Encode(&keyBytes, pb)
+	if err != nil {
+		klog.Errorf("pem.Encode(%v, %v) returned error %v, want nil", &keyBytes, pb, err)
+	}
 
 	return certBytes.Bytes(), keyBytes.Bytes(), nil
 }

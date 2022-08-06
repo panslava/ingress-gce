@@ -19,7 +19,6 @@ package l4lb
 import (
 	"fmt"
 	"reflect"
-	"sync"
 	"time"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
@@ -67,8 +66,7 @@ type L4Controller struct {
 	// enqueueTracker tracks the latest time an update was enqueued
 	enqueueTracker utils.TimeTracker
 	// syncTracker tracks the latest time an enqueued service was synced
-	syncTracker         utils.TimeTracker
-	sharedResourcesLock sync.Mutex
+	syncTracker utils.TimeTracker
 }
 
 // NewILBController creates a new instance of the L4 ILB controller.

@@ -26,12 +26,6 @@ import (
 	"k8s.io/ingress-gce/cmd/fuzzer/app"
 )
 
-var (
-	kubeconfig       *string
-	ingressNamespace *string
-	ingressName      *string
-)
-
 func main() {
 	flag.Usage = func() {
 		fmt.Fprint(flag.CommandLine.Output(), "Subcommands: gen validate\n\n")

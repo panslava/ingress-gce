@@ -501,9 +501,7 @@ func (manager *syncerManager) garbageCollectNEGWithCRD() error {
 				// In the situation a neg config is in the svcPortMap but the CR has a deletion timestamp, then
 				// neither the neg nor CR will not be deleted. In the situation a neg config is not in the svcPortMap,
 				// but the CR does not have a deletion timestamp, both CR and neg will be deleted.
-				if _, ok := deletionCandidates[portInfo.NegName]; ok {
-					delete(deletionCandidates, portInfo.NegName)
-				}
+				delete(deletionCandidates, portInfo.NegName)
 			}
 		}
 	}()
@@ -634,7 +632,7 @@ func (manager *syncerManager) ensureSvcNegCR(svcKey serviceKey, portInfo negtype
 	}
 
 	if !exists {
-		return fmt.Errorf("Service not found")
+		return fmt.Errorf("service not found")
 	}
 
 	service := obj.(*v1.Service)
@@ -661,7 +659,7 @@ func (manager *syncerManager) ensureSvcNegCR(svcKey serviceKey, portInfo negtype
 	negCR, err := manager.svcNegClient.NetworkingV1beta1().ServiceNetworkEndpointGroups(svcKey.namespace).Get(context.Background(), portInfo.NegName, metav1.GetOptions{})
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
-			return fmt.Errorf("Error retrieving existing negs: %s", err)
+			return fmt.Errorf("error retrieving existing negs: %s", err)
 		}
 
 		// Neg does not exist so create it
@@ -700,7 +698,7 @@ func ensureNegCRLabels(negCR *negv1beta1.ServiceNetworkEndpointGroup, labels map
 			if len(negCR.OwnerReferences) == 1 {
 				svcName = negCR.OwnerReferences[0].Name
 			}
-			return false, fmt.Errorf("Neg %s/%s has a label mismatch. Expected key %s to have the value %s but found %s. Neg is likely taken by % service. Please remove previous neg before creating this configuration", negCR.Namespace, negCR.Name, key, value, existingVal, svcName)
+			return false, fmt.Errorf("NEG %s/%s has a label mismatch. Expected key %s to have the value %s but found %s. Neg is likely taken by % service. Please remove previous neg before creating this configuration", negCR.Namespace, negCR.Name, key, value, existingVal, svcName)
 		}
 	}
 

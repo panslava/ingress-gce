@@ -171,7 +171,7 @@ func (l4hc *l4HealthChecks) ensureL4HealthCheckInternal(hcName string, svcName t
 	selfLink := ""
 	key, err := composite.CreateKey(l4hc.cloud, hcName, scope)
 	if err != nil {
-		return nil, selfLink, fmt.Errorf("Failed to create key for healthcheck with name %s for service %s", hcName, svcName.String())
+		return nil, selfLink, fmt.Errorf("failed to create key for healthcheck with name %s for service %s", hcName, svcName.String())
 	}
 	hc, err := composite.GetHealthCheck(l4hc.cloud, key, meta.VersionGA)
 	if err != nil {
@@ -229,7 +229,7 @@ func (l4hc *l4HealthChecks) ensureFirewall(svc *corev1.Service, hcFwName string,
 func (l4hc *l4HealthChecks) deleteHealthCheck(name string, scope meta.KeyType) error {
 	key, err := composite.CreateKey(l4hc.cloud, name, scope)
 	if err != nil {
-		return fmt.Errorf("Failed to create composite key for healthcheck %s - %w", name, err)
+		return fmt.Errorf("failed to create composite key for healthcheck %s - %w", name, err)
 	}
 	return composite.DeleteHealthCheck(l4hc.cloud, key, meta.VersionGA)
 }
@@ -267,7 +267,7 @@ func (l4hc *l4HealthChecks) healthCheckFirewallSafeToDelete(hcName string, share
 	}
 	key, err := composite.CreateKey(l4hc.cloud, hcName, scopeToCheck)
 	if err != nil {
-		return false, fmt.Errorf("Failed to create composite key for healthcheck %s - %w", hcName, err)
+		return false, fmt.Errorf("failed to create composite key for healthcheck %s - %w", hcName, err)
 	}
 	_, err = composite.GetHealthCheck(l4hc.cloud, key, meta.VersionGA)
 	return utils.IsNotFoundError(err), nil

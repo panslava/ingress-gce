@@ -3,8 +3,8 @@ module k8s.io/ingress-gce
 go 1.16
 
 require (
-	github.com/go-openapi/jsonpointer v0.19.5 // indirect
 	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.18.1-0.20220218231025-f11817397a1b
+	github.com/go-openapi/jsonpointer v0.19.5 // indirect
 	github.com/go-openapi/spec v0.19.3
 	github.com/google/go-cmp v0.5.6
 	github.com/imdario/mergo v0.3.7 // indirect
@@ -14,6 +14,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.7.0
 	golang.org/x/oauth2 v0.0.0-20211005180243-6b3c2da341f1
+	golang.org/x/text v0.3.7 // indirect
 	google.golang.org/api v0.60.0
 	gopkg.in/gcfg.v1 v1.2.3 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect

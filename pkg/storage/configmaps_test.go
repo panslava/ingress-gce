@@ -25,7 +25,10 @@ import (
 func TestCreateOnlyConfigMap(t *testing.T) {
 	vault := NewFakeConfigMapVault(api.NamespaceSystem, "ingress-uid")
 	// Get value from an empty vault.
-	val, exists, err := vault.Get(UIDDataKey)
+	_, exists, err := vault.Get(UIDDataKey)
+	if err != nil {
+		t.Errorf("vault.Get(%v) returned error %v, want nil", UIDDataKey, err)
+	}
 	if exists {
 		t.Errorf("Got value from an empty vault")
 	}
@@ -36,7 +39,7 @@ func TestCreateOnlyConfigMap(t *testing.T) {
 	if err != nil {
 		t.Errorf("expect err == nil, got %v", err)
 	}
-	val, exists, err = vault.Get(UIDDataKey)
+	val, exists, err := vault.Get(UIDDataKey)
 	if !exists || err != nil {
 		t.Errorf("Failed to retrieve value from vault: %v", err)
 	}
@@ -68,15 +71,21 @@ func TestCreateOnlyConfigMap(t *testing.T) {
 func TestFakeConfigMapVaule(t *testing.T) {
 	vault := NewFakeConfigMapVault(api.NamespaceSystem, "ingress-uid")
 	// Get value from an empty vault.
-	val, exists, err := vault.Get(UIDDataKey)
+	_, exists, err := vault.Get(UIDDataKey)
+	if err != nil {
+		t.Errorf("vault.Get(%v) returned error %v, want nil", UIDDataKey, err)
+	}
 	if exists {
 		t.Errorf("Got value from an empty vault")
 	}
 
 	// Store empty value for UIDDataKey.
 	uid := ""
-	vault.Put(UIDDataKey, uid, false)
-	val, exists, err = vault.Get(UIDDataKey)
+	err = vault.Put(UIDDataKey, uid, false)
+	if err != nil {
+		t.Errorf("vault.Put(%v, %v, %t) returned error %v, want nil", UIDDataKey, uid, false, err)
+	}
+	val, exists, err := vault.Get(UIDDataKey)
 	if !exists || err != nil {
 		t.Errorf("Failed to retrieve value from vault: %v", err)
 	}
@@ -86,7 +95,10 @@ func TestFakeConfigMapVaule(t *testing.T) {
 
 	// Store actual value in key.
 	storedVal := "newuid"
-	vault.Put(UIDDataKey, storedVal, false)
+	err = vault.Put(UIDDataKey, storedVal, false)
+	if err != nil {
+		t.Errorf("vault.Put(%v, %v, %t) returned error %v, want nil", UIDDataKey, storedVal, false, err)
+	}
 	val, exists, err = vault.Get(UIDDataKey)
 	if !exists || err != nil {
 		t.Errorf("Failed to retrieve value from vault")
@@ -97,7 +109,10 @@ func TestFakeConfigMapVaule(t *testing.T) {
 	// Store second value which will have the affect of updating to Store
 	// rather than adding.
 	secondVal := "bar"
-	vault.Put("foo", secondVal, false)
+	err = vault.Put("foo", secondVal, false)
+	if err != nil {
+		t.Errorf("vault.Put(%s, %v, %t) returned error %v, want nil", "foo", secondVal, false, err)
+	}
 	val, exists, err = vault.Get("foo")
 	if !exists || err != nil || val != secondVal {
 		t.Errorf("Failed to retrieve second value from vault")

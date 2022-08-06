@@ -233,9 +233,7 @@ func (i *Instances) List() ([]string, error) {
 			return nil, err
 		}
 
-		for _, ig := range igsForZone {
-			igs = append(igs, ig)
-		}
+		igs = append(igs, igsForZone...)
 	}
 
 	var names []string
@@ -337,8 +335,7 @@ func (i *Instances) Sync(nodes []string) (err error) {
 	}
 
 	for _, igName := range pool {
-		gceNodes := sets.NewString()
-		gceNodes, err = i.list(igName)
+		gceNodes, err := i.list(igName)
 		if err != nil {
 			klog.Errorf("list(%q) error: %v", igName, err)
 			return err
@@ -376,7 +373,7 @@ func (i *Instances) Sync(nodes []string) (err error) {
 		start := time.Now()
 		if len(removeNodes) != 0 {
 			err = i.Remove(igName, removeNodes)
-			klog.V(2).Infof("Remove(%q, _) = %v (took %s); nodes = %v", igName, err, time.Now().Sub(start), removeNodes)
+			klog.V(2).Infof("Remove(%q, _) = %v (took %s); nodes = %v", igName, err, time.Since(start), removeNodes)
 			if err != nil {
 				return err
 			}
@@ -385,7 +382,7 @@ func (i *Instances) Sync(nodes []string) (err error) {
 		start = time.Now()
 		if len(addNodes) != 0 {
 			err = i.Add(igName, addNodes)
-			klog.V(2).Infof("Add(%q, _) = %v (took %s); nodes = %v", igName, err, time.Now().Sub(start), addNodes)
+			klog.V(2).Infof("Add(%q, _) = %v (took %s); nodes = %v", igName, err, time.Since(start), addNodes)
 			if err != nil {
 				return err
 			}

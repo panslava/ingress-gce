@@ -23,9 +23,9 @@ import (
 // GCEURLMap is a simplified representation of a UrlMap somewhere
 // in the middle of a compute.UrlMap and rules in an Ingress spec.
 // This representation maintains three invariants/rules:
-//       1. All hostnames are unique
-//       2. All paths for a specific host are unique.
-//       3. Adding paths for a hostname replaces existing for that host.
+//  1. All hostnames are unique
+//  2. All paths for a specific host are unique.
+//  3. Adding paths for a hostname replaces existing for that host.
 type GCEURLMap struct {
 	DefaultBackend *ServicePort
 	// HostRules is an ordered list of hostnames, path rule tuples.
@@ -122,7 +122,6 @@ func (g *GCEURLMap) PutPathRulesForHost(hostname string, pathRules []PathRule) {
 
 	g.HostRules = append(g.HostRules, hr)
 	g.hosts[hostname] = true
-	return
 }
 
 // AllServicePorts return a list of all ServicePorts contained in the GCEURLMap.
@@ -131,7 +130,7 @@ func (g *GCEURLMap) AllServicePorts() (svcPorts []ServicePort) {
 	uniqueServerPorts := make(map[ServicePortID]bool)
 	if g.DefaultBackend != nil {
 		svcPorts = append(svcPorts, *g.DefaultBackend)
-		uniqueServerPorts[*&g.DefaultBackend.ID] = true
+		uniqueServerPorts[g.DefaultBackend.ID] = true
 	}
 
 	for _, rules := range g.HostRules {

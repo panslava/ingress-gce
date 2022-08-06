@@ -114,8 +114,7 @@ func TestASMServiceAndDestinationRule(t *testing.T) {
 				t.Error(err)
 			}
 
-			var porterPort int32
-			porterPort = 80
+			porterPort := 80
 			svcName := "service"
 			svcSkipName := "service-skip"
 

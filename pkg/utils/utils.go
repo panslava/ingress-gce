@@ -242,8 +242,9 @@ func PrettyJson(data interface{}) (string, error) {
 
 // KeyName returns the name portion from a full or partial GCP resource URL.
 // Example:
-//  Input:  https://googleapis.com/v1/compute/projects/my-project/global/backendServices/my-backend
-//  Output: my-backend
+//
+//	Input:  https://googleapis.com/v1/compute/projects/my-project/global/backendServices/my-backend
+//	Output: my-backend
 func KeyName(url string) (string, error) {
 	id, err := cloud.ParseResourceURL(url)
 	if err != nil {
@@ -261,8 +262,9 @@ func KeyName(url string) (string, error) {
 // RelativeResourceName returns the project, location, resource, and name from a full/partial GCP
 // resource URL. This removes the endpoint prefix and version.
 // Example:
-//  Input:  https://googleapis.com/v1/compute/projects/my-project/global/backendServices/my-backend
-//  Output: projects/my-project/global/backendServices/my-backend
+//
+//	Input:  https://googleapis.com/v1/compute/projects/my-project/global/backendServices/my-backend
+//	Output: projects/my-project/global/backendServices/my-backend
 func RelativeResourceName(url string) (string, error) {
 	resID, err := cloud.ParseResourceURL(url)
 	if err != nil {
@@ -274,8 +276,9 @@ func RelativeResourceName(url string) (string, error) {
 // ResourcePath returns the location, resource and name portion from a
 // full or partial GCP resource URL. This removes the endpoint prefix, version, and project.
 // Example:
-//  Input:  https://googleapis.com/v1/compute/projects/my-project/global/backendServices/my-backend
-//  Output: global/backendServices/my-backend
+//
+//	Input:  https://googleapis.com/v1/compute/projects/my-project/global/backendServices/my-backend
+//	Output: global/backendServices/my-backend
 func ResourcePath(url string) (string, error) {
 	resID, err := cloud.ParseResourceURL(url)
 	if err != nil {
@@ -437,7 +440,7 @@ func nodePredicateInternal(node *api_v1.Node, includeUnreadyNodes, excludeUpgrad
 	}
 	if excludeUpgradingNodes {
 		// This node is about to be upgraded or deleted as part of resize.
-		if operation, _ := node.Labels[GKECurrentOperationLabel]; operation == NodeDrain {
+		if operation := node.Labels[GKECurrentOperationLabel]; operation == NodeDrain {
 			return false
 		}
 	}
@@ -540,7 +543,6 @@ func TraverseIngressBackends(ing *networkingv1.Ingress, process func(id ServiceP
 			}
 		}
 	}
-	return
 }
 
 func ServiceKeyFunc(namespace, name string) string {

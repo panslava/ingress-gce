@@ -17,13 +17,15 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"regexp"
 	"sort"
 	"strings"
 	"unicode"
 
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
@@ -215,13 +217,16 @@ func populateApiServices() {
 	}
 	defer apiFile.Close()
 
-	byteValue, err := ioutil.ReadAll(apiFile)
+	byteValue, err := io.ReadAll(apiFile)
 	if err != nil {
 		panic(err)
 	}
 
 	var result map[string]interface{}
-	json.Unmarshal([]byte(byteValue), &result)
+	err = json.Unmarshal(byteValue, &result)
+	if err != nil {
+		return
+	}
 
 	// Queue of ApiService names for BFS
 	typesQueue := []string{}
@@ -247,13 +252,13 @@ func populateApiServices() {
 
 		fields, ok := result["schemas"].(map[string]interface{})[typeName].(map[string]interface{})["properties"].(map[string]interface{})
 		if !ok {
-			panic(fmt.Errorf("Unable to parse type: %s", typeName))
+			panic(fmt.Errorf("unable to parse type: %s", typeName))
 		}
 
 		apiService := ApiService{Name: typeName, Fields: []ApiService{}, VarName: createVarName(typeName)}
-
+		caser := cases.Title(language.English)
 		for prop, val := range fields {
-			subType := ApiService{Name: strings.Title(prop), JsonName: prop}
+			subType := ApiService{Name: caser.String(prop), JsonName: prop}
 
 			var override bool
 			propType, typesQueue, override, err = getGoType(val, typesQueue)

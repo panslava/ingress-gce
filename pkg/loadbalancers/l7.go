@@ -494,7 +494,7 @@ func GetLBAnnotations(l7 *L7, existing map[string]string, backendSyncer backends
 func GCEResourceName(ingAnnotations map[string]string, resourceName string) string {
 	// Even though this function is trivial, it exists to keep the annotation
 	// parsing logic in a single location.
-	resourceName, _ = ingAnnotations[fmt.Sprintf("%v/%v", annotations.StatusPrefix, resourceName)]
+	resourceName = ingAnnotations[fmt.Sprintf("%v/%v", annotations.StatusPrefix, resourceName)]
 	return resourceName
 }
 
