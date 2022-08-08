@@ -19,14 +19,13 @@ package loadbalancers
 import (
 	"context"
 	"fmt"
+
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	"google.golang.org/api/compute/v1"
 )
 
 const FakeCertQuota = 15
-
-var testIPManager = testIP{}
 
 type testIP struct {
 	start int

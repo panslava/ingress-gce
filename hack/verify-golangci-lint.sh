@@ -1,6 +1,6 @@
 #!/bin/sh
-#
-# Copyright 2016 The Kubernetes Authors.
+
+# Copyright YEAR The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,22 +14,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# This script checks coding style for go language using golangci-lint
+# Usage: `hack/verify-golangci-lint.sh`.
 set -o errexit
 set -o nounset
 set -o pipefail
 
-export CGO_ENABLED=0
+# Ensure that we find the binaries we build before anything else.
+export GO111MODULE=on
 
-TARGETS=$(for d in "$@"; do echo ./$d/...; done)
+# Install golangci-lint
+go version
+echo 'installing golangci-lint '
+cd "hack/tools"
+  go get github.com/golangci/golangci-lint/cmd/golangci-lint
+cd ../../
 
-echo -n "Checking golangci-lint: "
-ls -la hack/verify-golangci-lint.sh
-ERRS=$(hack/verify-golangci-lint.sh ${TARGETS} 2>&1 || true)
-if [ -n "${ERRS}" ]; then
-    echo "FAIL"
-    echo "${ERRS}"
-    echo
-    exit 1
+echo 'running golangci-lint '
+if [[ "$#" -gt 0 ]]; then
+    golangci-lint run "$@"
+else
+    golangci-lint run
 fi
-echo "PASS"
-echo

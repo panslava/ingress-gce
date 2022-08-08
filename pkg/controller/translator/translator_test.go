@@ -1062,14 +1062,6 @@ func gceURLMapFromFile(t *testing.T, filename string) *utils.GCEURLMap {
 	return v
 }
 
-func int64ToMap(l []int64) map[int64]bool {
-	ret := map[int64]bool{}
-	for _, i := range l {
-		ret[i] = true
-	}
-	return ret
-}
-
 func TestSetTrafficScaling(t *testing.T) {
 	// No t.Parallel()
 

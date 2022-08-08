@@ -39,8 +39,6 @@ const (
 	SyncProcess = "Sync"
 )
 
-type syncType string
-
 var (
 	negOpLatencyMetricsLabels = []string{
 		"operation",   // endpoint operation

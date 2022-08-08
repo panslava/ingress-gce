@@ -60,7 +60,6 @@ const (
 	name3      = "svc3"
 
 	portName1   = "foo"
-	portName2   = "bar"
 	port1       = int32(1000)
 	port2       = int32(2000)
 	port3       = int32(3000)

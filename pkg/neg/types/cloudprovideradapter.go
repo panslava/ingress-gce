@@ -22,13 +22,6 @@ import (
 	"k8s.io/legacy-cloud-providers/gce"
 )
 
-const (
-	// aggregatedListZonalKeyPrefix is the prefix for the zonal key from AggregatedList
-	aggregatedListZonalKeyPrefix = "zones"
-	// aggregatedListGlobalKey is the global key from AggregatedList
-	aggregatedListGlobalKey = "global"
-)
-
 // NewAdapter takes a Cloud and returns a NetworkEndpointGroupCloud.
 func NewAdapter(g *gce.Cloud) NetworkEndpointGroupCloud {
 	return &cloudProviderAdapter{

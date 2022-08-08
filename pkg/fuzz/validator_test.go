@@ -48,8 +48,7 @@ var baseIngress = &networkingv1.Ingress{
 }
 
 const (
-	mockValidatorOk = iota
-	mockValidatorUnstable
+	mockValidatorUnstable = iota + 1
 	mockValidatorHTTPS
 	mockValidatorConfigureError
 	mockValidatorCheckError

@@ -61,8 +61,7 @@ const (
 )
 
 var (
-	metricsInterval = 10 * time.Minute
-	defaultBackend  = utils.ServicePort{
+	defaultBackend = utils.ServicePort{
 		ID: utils.ServicePortID{
 			Service: types.NamespacedName{
 				Name:      "default-http-backend",
@@ -341,9 +340,9 @@ func TestEnableNEGServiceWithIngress(t *testing.T) {
 	validateServiceStateAnnotation(t, svc, svcPorts, controller.namer)
 }
 
-//TestEnableNEGSeviceWithL4ILB tests L4 ILB service with NEGs enabled.
-//Also verifies that modifying the TrafficPolicy on the service will
-//take effect.
+// TestEnableNEGSeviceWithL4ILB tests L4 ILB service with NEGs enabled.
+// Also verifies that modifying the TrafficPolicy on the service will
+// take effect.
 func TestEnableNEGServiceWithL4ILB(t *testing.T) {
 	kubeClient := fake.NewSimpleClientset()
 	testContext := negtypes.NewTestContextWithKubeClient(kubeClient)

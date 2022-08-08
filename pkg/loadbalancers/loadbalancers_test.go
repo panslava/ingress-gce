@@ -50,7 +50,6 @@ const (
 	clusterName    = "uid1"
 	ingressName    = "test"
 	namespace      = "namespace1"
-	defaultZone    = "zone-a"
 	defaultVersion = meta.VersionGA
 	defaultScope   = meta.Global
 )
@@ -552,7 +551,7 @@ func TestMultipleCertRetentionAfterRestart(t *testing.T) {
 	verifyCertAndProxyLink(expectCerts, expectCerts, j, t)
 }
 
-//TestUpgradeToNewCertNames verifies that certs uploaded using the old naming convention
+// TestUpgradeToNewCertNames verifies that certs uploaded using the old naming convention
 // are picked up and deleted when upgrading to the new scheme.
 func TestUpgradeToNewCertNames(t *testing.T) {
 	j := newTestJig(t)
@@ -1408,16 +1407,6 @@ func TestInvalidClusterNameChange(t *testing.T) {
 
 func createCert(key string, contents string, name string) *translator.TLSCerts {
 	return &translator.TLSCerts{Key: key, Cert: contents, Name: name, CertHash: translator.GetCertHash(contents)}
-}
-
-func syncPool(j *testJig, t *testing.T, lbInfo *L7RuntimeInfo) {
-	if _, err := j.pool.Ensure(lbInfo); err != nil {
-		t.Fatalf("j.pool.Ensure() = err %v", err)
-	}
-	l7, err := j.pool.Ensure(lbInfo)
-	if err != nil || l7 == nil {
-		t.Fatalf("Expected l7 not created")
-	}
 }
 
 func TestList(t *testing.T) {

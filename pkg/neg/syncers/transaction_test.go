@@ -1468,14 +1468,6 @@ func newTestTransactionSyncer(fakeGCE negtypes.NetworkEndpointGroupCloud, negTyp
 	return negsyncer, transactionSyncer
 }
 
-func copyMap(endpointMap map[string]negtypes.NetworkEndpointSet) map[string]negtypes.NetworkEndpointSet {
-	ret := map[string]negtypes.NetworkEndpointSet{}
-	for k, v := range endpointMap {
-		ret[k] = negtypes.NewNetworkEndpointSet(v.List()...)
-	}
-	return ret
-}
-
 func generateTransaction(table networkEndpointTransactionTable, entry transactionEntry, initialIp net.IP, num int, instance string, targetPort string) {
 	endpointSet := generateEndpointSet(initialIp, num, instance, targetPort)
 	for _, encodedEndpoint := range endpointSet.List() {
