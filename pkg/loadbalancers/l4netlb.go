@@ -159,18 +159,18 @@ func (l4netlb *L4NetLB) EnsureFrontend(nodeNames []string, svc *corev1.Service) 
 		result.Annotations[annotations.UDPForwardingRuleKey] = fr.Name
 	}
 
-	ipv6fr, err := l4netlb.ensureIPv6ForwardingRule(bs.SelfLink)
-	if err != nil {
-		klog.Errorf("Failed to create external ipv6 forwarding rule - %v", err)
-		result.GCEResourceInError = annotations.IPv6ForwardingRuleResource
-		result.Error = err
-		return result
-	}
-	if ipv6fr.IPProtocol == string(corev1.ProtocolTCP) {
-		result.Annotations[annotations.IPv6TCPForwardingRuleKey] = ipv6fr.Name
-	} else {
-		result.Annotations[annotations.IPv6UDPForwardingRuleKey] = ipv6fr.Name
-	}
+	//ipv6fr, err := l4netlb.ensureIPv6ForwardingRule(bs.SelfLink)
+	//if err != nil {
+	//	klog.Errorf("Failed to create external ipv6 forwarding rule - %v", err)
+	//	result.GCEResourceInError = annotations.IPv6ForwardingRuleResource
+	//	result.Error = err
+	//	return result
+	//}
+	//if ipv6fr.IPProtocol == string(corev1.ProtocolTCP) {
+	//	result.Annotations[annotations.IPv6TCPForwardingRuleKey] = ipv6fr.Name
+	//} else {
+	//	result.Annotations[annotations.IPv6UDPForwardingRuleKey] = ipv6fr.Name
+	//}
 
 	result.Status = &corev1.LoadBalancerStatus{Ingress: []corev1.LoadBalancerIngress{{IP: fr.IPAddress}}}
 	result.MetricsState.IsPremiumTier = fr.NetworkTier == cloud.NetworkTierPremium.ToGCEValue()

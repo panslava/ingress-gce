@@ -11,7 +11,7 @@ import (
 	"k8s.io/ingress-gce/pkg/composite"
 	"k8s.io/ingress-gce/pkg/events"
 	"k8s.io/ingress-gce/pkg/utils"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	"k8s.io/legacy-cloud-providers/gce"
 )
 
@@ -56,13 +56,11 @@ func (l *L4) ensureIPv6ForwardingRule(bsLink string, options gce.ILBOptions) (*c
 }
 
 func (l *L4) buildExpectedIPv6ForwardingRule(bsLink string, options gce.ILBOptions) (*composite.ForwardingRule, error) {
-	frName := l.GetIPv6FRName()
-	ports, _, _, protocol := utils.GetPortsAndProtocol(l.Service.Spec.Ports)
+	frName := l.getIPv6FRName()
 
 	frDesc, err := utils.MakeL4IPv6ForwardingRuleDescription(l.Service)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to compute description for forwarding rule %s, err: %w", frName,
-			err)
+		return nil, fmt.Errorf("failed to compute description for forwarding rule %s, err: %w", frName, err)
 	}
 
 	subnetworkURL := l.cloud.SubnetworkURL()
@@ -76,6 +74,10 @@ func (l *L4) buildExpectedIPv6ForwardingRule(bsLink string, options gce.ILBOptio
 		subnetKey.Name = options.SubnetName
 		subnetworkURL = cloud.SelfLink(meta.VersionGA, l.cloud.NetworkProjectID(), "subnetworks", &subnetKey)
 	}
+
+	svcPorts := l.Service.Spec.Ports
+	ports := utils.GetPorts(svcPorts)
+	protocol := utils.GetProtocol(svcPorts)
 
 	fr := &composite.ForwardingRule{
 		Name:                frName,

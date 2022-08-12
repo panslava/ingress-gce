@@ -3,6 +3,7 @@ package healthchecks
 import (
 	"fmt"
 
+	"k8s.io/klog/v2"
 	utilnet "k8s.io/utils/net"
 )
 
@@ -20,11 +21,11 @@ func init() {
 	var err error
 	L4ELBIPv6HCRange, err = utilnet.ParseIPNets([]string{l4ELBIPv6HCRangeString}...)
 	if err != nil {
-		panic(fmt.Sprintf("utilnet.ParseIPNets([]string{%s}...) returned error %v, want nil", l4ELBIPv6HCRangeString, err))
+		klog.Fatalf(fmt.Sprintf("utilnet.ParseIPNets([]string{%s}...) returned error %v, want nil", l4ELBIPv6HCRangeString, err))
 	}
 
 	L4ILBIPv6HCRange, err = utilnet.ParseIPNets([]string{l4ILBIPv6HCRangeString}...)
 	if err != nil {
-		panic(fmt.Sprintf("utilnet.ParseIPNets([]string{%s}...) returned error %v, want nil", l4ILBIPv6HCRangeString, err))
+		klog.Fatalf(fmt.Sprintf("utilnet.ParseIPNets([]string{%s}...) returned error %v, want nil", l4ILBIPv6HCRangeString, err))
 	}
 }

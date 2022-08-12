@@ -55,7 +55,7 @@ type L4 struct {
 	NamespacedName  types.NamespacedName
 	l4HealthChecks  healthchecks.L4HealthChecks
 	forwardingRules ForwardingRulesProvider
-	enableIPV6      bool
+	enableDualStack bool
 }
 
 // L4ILBSyncResult contains information about the outcome of an L4 ILB sync. It stores the list of resource name annotations,
@@ -80,7 +80,7 @@ func NewL4Handler(service *corev1.Service, cloud *gce.Cloud, scope meta.KeyType,
 		Service:         service,
 		l4HealthChecks:  healthchecks.L4(),
 		forwardingRules: forwardingrules.New(cloud, meta.VersionGA, scope),
-		enableIPV6:      flags.F.EnableL4ILBIPv6,
+		enableDualStack: flags.F.EnableL4ILBIPv6,
 	}
 	l.NamespacedName = types.NamespacedName{Name: service.Name, Namespace: service.Namespace}
 	l.backendPool = backends.NewPool(l.cloud, l.namer)
@@ -111,39 +111,13 @@ func (l *L4) EnsureInternalLoadBalancerDeleted(svc *corev1.Service) *L4ILBSyncRe
 		return result
 	}
 
-	frName := l.GetFRName()
-	key, err := l.CreateKey(frName)
-	if err != nil {
-		klog.Errorf("Failed to create key for LoadBalancer resources with name %s for service %s, err %v", frName, l.NamespacedName.String(), err)
-		result.Error = err
-		return result
-	}
-	// If any resource deletion fails, log the error and continue cleanup.
-	if err = utils.IgnoreHTTPNotFound(composite.DeleteForwardingRule(l.cloud, key, meta.VersionGA)); err != nil {
-		klog.Errorf("Failed to delete forwarding rule for internal loadbalancer service %s, err %v", l.NamespacedName.String(), err)
-		result.Error = err
-		result.GCEResourceInError = annotations.ForwardingRuleResource
-	}
-
-	if l.enableIPV6 {
+	l.deleteIPv4Resources(result, name)
+	if l.enableDualStack {
 		l.deleteIPv6Resources(result, name)
 	}
 
-	if err = ensureAddressDeleted(l.cloud, name, l.cloud.Region()); err != nil {
-		klog.Errorf("Failed to delete address for internal loadbalancer service %s, err %v", l.NamespacedName.String(), err)
-		result.Error = err
-		result.GCEResourceInError = annotations.AddressResource
-	}
-
-	// delete firewall rule allowing load balancer source ranges
-	err = l.deleteFirewall(name)
-	if err != nil {
-		klog.Errorf("Failed to delete firewall rule %s for internal loadbalancer service %s, err %v", name, l.NamespacedName.String(), err)
-		result.GCEResourceInError = annotations.FirewallRuleResource
-		result.Error = err
-	}
 	// Delete backend service
-	err = utils.IgnoreHTTPNotFound(l.backendPool.Delete(name, meta.VersionGA, meta.Regional))
+	err := utils.IgnoreHTTPNotFound(l.backendPool.Delete(name, meta.VersionGA, meta.Regional))
 	if err != nil {
 		klog.Errorf("Failed to delete backends for internal loadbalancer service %s, err  %v", l.NamespacedName.String(), err)
 		result.GCEResourceInError = annotations.BackendServiceResource
@@ -157,13 +131,43 @@ func (l *L4) EnsureInternalLoadBalancerDeleted(svc *corev1.Service) *L4ILBSyncRe
 	// When service is deleted we need to check both health checks shared and non-shared
 	// and delete them if needed.
 	for _, isShared := range []bool{true, false} {
-		resourceInError, err := l.l4HealthChecks.DeleteHealthCheck(svc, l.namer, isShared, meta.Global, utils.ILB, l.enableIPV6)
+		resourceInError, err := l.l4HealthChecks.DeleteHealthCheck(svc, l.namer, isShared, meta.Global, utils.ILB, l.enableDualStack)
 		if err != nil {
 			result.GCEResourceInError = resourceInError
 			result.Error = err
 		}
 	}
 	return result
+}
+
+func (l *L4) deleteIPv4Resources(result *L4ILBSyncResult, bsName string) {
+	frName := l.GetFRName()
+	key, err := l.CreateKey(frName)
+	if err != nil {
+		klog.Errorf("Failed to create key for LoadBalancer resources with name %s for service %s, err %v", frName, l.NamespacedName.String(), err)
+		result.Error = err
+		return
+	}
+	// If any resource deletion fails, log the error and continue cleanup.
+	if err = utils.IgnoreHTTPNotFound(composite.DeleteForwardingRule(l.cloud, key, meta.VersionGA)); err != nil {
+		klog.Errorf("Failed to delete forwarding rule for internal loadbalancer service %s, err %v", l.NamespacedName.String(), err)
+		result.Error = err
+		result.GCEResourceInError = annotations.ForwardingRuleResource
+	}
+
+	if err = ensureAddressDeleted(l.cloud, bsName, l.cloud.Region()); err != nil {
+		klog.Errorf("Failed to delete address for internal loadbalancer service %s, err %v", l.NamespacedName.String(), err)
+		result.Error = err
+		result.GCEResourceInError = annotations.AddressResource
+	}
+
+	// delete firewall rule allowing load balancer source ranges
+	err = l.deleteFirewall(bsName)
+	if err != nil {
+		klog.Errorf("Failed to delete firewall rule %s for internal loadbalancer service %s, err %v", bsName, l.NamespacedName.String(), err)
+		result.GCEResourceInError = annotations.FirewallRuleResource
+		result.Error = err
+	}
 }
 
 func (l *L4) deleteFirewall(name string) error {
@@ -188,18 +192,6 @@ func (l *L4) GetFRName() string {
 
 func (l *L4) getFRNameWithProtocol(protocol string) string {
 	return l.namer.L4ForwardingRule(l.Service.Namespace, l.Service.Name, strings.ToLower(protocol))
-}
-
-// GetIPv6FRName returns the name of the forwarding rule for the given ILB service.
-// This appends the protocol to the forwarding rule name, which will help supporting multiple protocols in the same ILB
-// service.
-func (l *L4) GetIPv6FRName() string {
-	_, _, _, protocol := utils.GetPortsAndProtocol(l.Service.Spec.Ports)
-	return l.getIPv6FRNameWithProtocol(string(protocol))
-}
-
-func (l *L4) getIPv6FRNameWithProtocol(protocol string) string {
-	return l.namer.L4IPv6ForwardingRule(l.Service.Namespace, l.Service.Name, strings.ToLower(protocol))
 }
 
 // EnsureInternalLoadBalancer ensures that all GCE resources for the given loadbalancer service have
@@ -228,7 +220,7 @@ func (l *L4) EnsureInternalLoadBalancer(nodeNames []string, svc *corev1.Service)
 
 	// create healthcheck
 	sharedHC := !helpers.RequestsOnlyLocalTraffic(l.Service)
-	hcResult := l.l4HealthChecks.EnsureL4HealthCheck(l.Service, l.namer, sharedHC, meta.Global, utils.ILB, nodeNames, l.enableIPV6)
+	hcResult := l.l4HealthChecks.EnsureL4HealthCheck(l.Service, l.namer, sharedHC, meta.Global, utils.ILB, nodeNames, l.enableDualStack)
 
 	if hcResult.Err != nil {
 		result.GCEResourceInError = hcResult.GceResourceInError
@@ -236,9 +228,9 @@ func (l *L4) EnsureInternalLoadBalancer(nodeNames []string, svc *corev1.Service)
 		return result
 	}
 	result.Annotations[annotations.HealthcheckKey] = hcResult.HCName
+	result.Annotations[annotations.FirewallRuleForHealthcheckKey] = hcResult.HCFirewallRuleName
 
 	servicePorts := l.Service.Spec.Ports
-	portRanges := utils.GetServicePortRanges(servicePorts)
 	protocol := utils.GetProtocol(servicePorts)
 
 	// Check if protocol has changed for this service. In this case, forwarding rule should be deleted before
@@ -248,6 +240,7 @@ func (l *L4) EnsureInternalLoadBalancer(nodeNames []string, svc *corev1.Service)
 	if err != nil {
 		klog.Errorf("Failed to lookup existing backend service, ignoring err: %v", err)
 	}
+
 	existingFR, err := l.forwardingRules.Get(l.GetFRName())
 	if existingBS != nil && existingBS.Protocol != string(protocol) {
 		klog.Infof("Protocol changed from %q to %q for service %s", existingBS.Protocol, string(protocol), l.NamespacedName)
@@ -262,7 +255,7 @@ func (l *L4) EnsureInternalLoadBalancer(nodeNames []string, svc *corev1.Service)
 			klog.Errorf("Failed to delete forwarding rule %s, err %v", frName, err)
 		}
 
-		if l.enableIPV6 {
+		if l.enableDualStack {
 			// Delete ipv6 forwarding rule if it exists
 			ipv6FrName := l.getIPv6FRNameWithProtocol(existingBS.Protocol)
 			err = l.forwardingRules.Delete(ipv6FrName)
@@ -281,49 +274,16 @@ func (l *L4) EnsureInternalLoadBalancer(nodeNames []string, svc *corev1.Service)
 		return result
 	}
 	result.Annotations[annotations.BackendServiceKey] = name
-	// create fr rule
-	frName := l.GetFRName()
-	fr, err := l.ensureForwardingRule(frName, bs.SelfLink, options, existingFR)
-	if err != nil {
-		klog.Errorf("EnsureInternalLoadBalancer: Failed to create forwarding rule - %v", err)
-		result.GCEResourceInError = annotations.ForwardingRuleResource
-		result.Error = err
-		return result
-	}
-	if fr.IPProtocol == string(corev1.ProtocolTCP) {
-		result.Annotations[annotations.TCPForwardingRuleKey] = frName
-	} else {
-		result.Annotations[annotations.UDPForwardingRuleKey] = frName
-	}
 
-	// ensure firewalls
-	sourceRanges, err := helpers.GetLoadBalancerSourceRanges(l.Service)
-	if err != nil {
-		result.Error = err
-		return result
-	}
-	// Add firewall rule for ILB traffic to nodes
-	nodesFWRParams := firewalls.FirewallParams{
-		PortRanges:        portRanges,
-		SourceRanges:      sourceRanges.StringSlice(),
-		DestinationRanges: []string{fr.IPAddress},
-		Protocol:          string(protocol),
-		Name:              name,
-		NodeNames:         nodeNames,
-		L4Type:            utils.ILB,
-	}
-
-	if err := firewalls.EnsureL4LBFirewallForNodes(l.Service, &nodesFWRParams, l.cloud, l.recorder); err != nil {
-		result.GCEResourceInError = annotations.FirewallRuleResource
-		result.Error = err
-		return result
-	}
-	result.Annotations[annotations.FirewallRuleKey] = name
-	result.Annotations[annotations.FirewallRuleForHealthcheckKey] = hcResult.HCFirewallRuleName
-
-	result.Status = &corev1.LoadBalancerStatus{Ingress: []corev1.LoadBalancerIngress{{IP: fr.IPAddress}}}
-
-	if l.enableIPV6 {
+	if l.enableDualStack {
+		if utils.NeedsIPv4(l.Service) {
+			l.ensureIPv4Resources(result, nodeNames, options, bs, existingFR)
+			if result.Error != nil {
+				return result
+			}
+		} else {
+			l.deleteIPv4Resources(result, name)
+		}
 		if utils.NeedsIPv6(l.Service) {
 			l.ensureIPv6Resources(result, nodeNames, options, bs.SelfLink, name)
 			if result.Error != nil {
@@ -332,6 +292,8 @@ func (l *L4) EnsureInternalLoadBalancer(nodeNames []string, svc *corev1.Service)
 		} else {
 			l.deleteIPv6Resources(result, name)
 		}
+	} else {
+		l.ensureIPv4Resources(result, nodeNames, options, bs, existingFR)
 	}
 
 	result.MetricsState.InSuccess = true
@@ -347,68 +309,48 @@ func (l *L4) EnsureInternalLoadBalancer(nodeNames []string, svc *corev1.Service)
 	return result
 }
 
-func (l *L4) ensureIPv6Resources(syncResult *L4ILBSyncResult, nodeNames []string, options gce.ILBOptions, bsLink string, bsName string) {
-	ipv6frName := l.GetIPv6FRName()
-	ipv6fr, err := l.ensureIPv6ForwardingRule(bsLink, options)
+func (l *L4) ensureIPv4Resources(result *L4ILBSyncResult, nodeNames []string, options gce.ILBOptions, bs *composite.BackendService, existingFR *composite.ForwardingRule) {
+	frName := l.GetFRName()
+	fr, err := l.ensureForwardingRule(frName, bs.SelfLink, options, existingFR)
 	if err != nil {
-		klog.Errorf("ensureIPv6Resources: Failed to create ipv6 forwarding rule - %v", err)
-		syncResult.GCEResourceInError = annotations.IPv6ForwardingRuleResource
-		syncResult.Error = err
+		klog.Errorf("EnsureInternalLoadBalancer: Failed to create forwarding rule - %v", err)
+		result.GCEResourceInError = annotations.ForwardingRuleResource
+		result.Error = err
+		return
 	}
-	if ipv6fr.IPProtocol == string(corev1.ProtocolTCP) {
-		syncResult.Annotations[annotations.IPv6TCPForwardingRuleKey] = ipv6frName
+	if fr.IPProtocol == string(corev1.ProtocolTCP) {
+		result.Annotations[annotations.TCPForwardingRuleKey] = frName
 	} else {
-		syncResult.Annotations[annotations.IPv6UDPForwardingRuleKey] = ipv6frName
+		result.Annotations[annotations.UDPForwardingRuleKey] = frName
 	}
-	_, portRanges, _, protocol := utils.GetPortsAndProtocol(l.Service.Spec.Ports)
 
+	// ensure firewalls
 	sourceRanges, err := helpers.GetLoadBalancerSourceRanges(l.Service)
 	if err != nil {
-		syncResult.Error = err
+		result.Error = err
 		return
 	}
 
-	ipv6nodesFWRParams := firewalls.FirewallParams{
+	servicePorts := l.Service.Spec.Ports
+	protocol := utils.GetProtocol(servicePorts)
+	portRanges := utils.GetServicePortRanges(servicePorts)
+	// Add firewall rule for ILB traffic to nodes
+	nodesFWRParams := firewalls.FirewallParams{
 		PortRanges:        portRanges,
 		SourceRanges:      sourceRanges.StringSlice(),
-		DestinationRanges: []string{ipv6fr.IPAddress},
+		DestinationRanges: []string{fr.IPAddress},
 		Protocol:          string(protocol),
-		Name:              bsName + "-ipv6",
+		Name:              bs.Name,
 		NodeNames:         nodeNames,
 		L4Type:            utils.ILB,
 	}
 
-	if err := firewalls.EnsureL4LBFirewallForNodes(l.Service, &ipv6nodesFWRParams, l.cloud, l.recorder); err != nil {
-		syncResult.GCEResourceInError = annotations.IPv6FirewallRuleResource
-		syncResult.Error = err
+	if err := firewalls.EnsureL4LBFirewallForNodes(l.Service, &nodesFWRParams, l.cloud, l.recorder); err != nil {
+		result.GCEResourceInError = annotations.FirewallRuleResource
+		result.Error = err
 		return
 	}
+	result.Annotations[annotations.FirewallRuleKey] = bs.Name
 
-	trimmedIPv6Address := strings.Split(ipv6fr.IPAddress, "/")[0]
-	syncResult.Status.Ingress = append(syncResult.Status.Ingress, corev1.LoadBalancerIngress{IP: trimmedIPv6Address})
-}
-
-func (l *L4) deleteIPv6Resources(syncResult *L4ILBSyncResult, bsName string) {
-	ipv6FrName := l.GetIPv6FRName()
-	ipv6key, err := l.CreateKey(ipv6FrName)
-	if err != nil {
-		klog.Errorf("Failed to create ipv6 key for LoadBalancer resources with name %s for service %s, err %v", ipv6FrName, l.NamespacedName.String(), err)
-		syncResult.Error = err
-		return
-	}
-	// If any resource deletion fails, log the error and continue cleanup.
-	if err = utils.IgnoreHTTPNotFound(composite.DeleteForwardingRule(l.cloud, ipv6key, meta.VersionGA)); err != nil {
-		klog.Errorf("Failed to delete ipv6 forwarding rule for internal loadbalancer service %s, err %v", l.NamespacedName.String(), err)
-		syncResult.Error = err
-		syncResult.GCEResourceInError = annotations.IPv6ForwardingRuleResource
-	}
-
-	// delete firewall rule allowing load balancer source ranges
-	ipv6FirewallName := bsName + "-ipv6"
-	err = l.deleteFirewall(ipv6FirewallName)
-	if err != nil {
-		klog.Errorf("Failed to delete ipv6 firewall rule %s for internal loadbalancer service %s, err %v", ipv6FirewallName, l.NamespacedName.String(), err)
-		syncResult.GCEResourceInError = annotations.IPv6FirewallRuleResource
-		syncResult.Error = err
-	}
+	result.Status = utils.AddIPToLBStatus(result.Status, fr.IPAddress)
 }

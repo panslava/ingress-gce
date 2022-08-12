@@ -823,3 +823,16 @@ func GetServiceNodePort(service *api_v1.Service) int64 {
 	}
 	return int64(service.Spec.Ports[0].NodePort)
 }
+
+func AddIPToLBStatus(status *api_v1.LoadBalancerStatus, ips ...string) *api_v1.LoadBalancerStatus {
+	if status == nil {
+		status = &api_v1.LoadBalancerStatus{
+			Ingress: []api_v1.LoadBalancerIngress{},
+		}
+	}
+
+	for _, ip := range ips {
+		status.Ingress = append(status.Ingress, api_v1.LoadBalancerIngress{IP: ip})
+	}
+	return status
+}
