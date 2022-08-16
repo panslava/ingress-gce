@@ -16,7 +16,7 @@ type ForwardingRules struct {
 	scope   meta.KeyType
 }
 
-func NewForwardingRules(cloud *gce.Cloud, version meta.Version, scope meta.KeyType) *ForwardingRules {
+func New(cloud *gce.Cloud, version meta.Version, scope meta.KeyType) *ForwardingRules {
 	return &ForwardingRules{
 		cloud:   cloud,
 		version: version,

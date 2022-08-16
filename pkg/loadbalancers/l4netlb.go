@@ -51,7 +51,7 @@ type L4NetLB struct {
 	ServicePort     utils.ServicePort
 	NamespacedName  types.NamespacedName
 	l4HealthChecks  healthchecks.L4HealthChecks
-	forwardingRules forwardingrules.ForwardingRulesProvider
+	forwardingRules ForwardingRulesProvider
 }
 
 // L4NetLBSyncResult contains information about the outcome of an L4 NetLB sync. It stores the list of resource name annotations,
@@ -92,7 +92,7 @@ func NewL4NetLB(service *corev1.Service, cloud *gce.Cloud, scope meta.KeyType, n
 		NamespacedName:  types.NamespacedName{Name: service.Name, Namespace: service.Namespace},
 		backendPool:     backends.NewPool(cloud, namer),
 		l4HealthChecks:  healthchecks.L4(),
-		forwardingRules: forwardingrules.NewForwardingRules(cloud, meta.VersionGA, scope),
+		forwardingRules: forwardingrules.New(cloud, meta.VersionGA, scope),
 	}
 	portId := utils.ServicePortID{Service: l4netlb.NamespacedName}
 	l4netlb.ServicePort = utils.ServicePort{

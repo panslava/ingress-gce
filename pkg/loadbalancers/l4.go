@@ -53,7 +53,7 @@ type L4 struct {
 	ServicePort     utils.ServicePort
 	NamespacedName  types.NamespacedName
 	l4HealthChecks  healthchecks.L4HealthChecks
-	forwardingRules forwardingrules.ForwardingRulesProvider
+	forwardingRules ForwardingRulesProvider
 }
 
 // L4ILBSyncResult contains information about the outcome of an L4 ILB sync. It stores the list of resource name annotations,
@@ -77,7 +77,7 @@ func NewL4Handler(service *corev1.Service, cloud *gce.Cloud, scope meta.KeyType,
 		recorder:        recorder,
 		Service:         service,
 		l4HealthChecks:  healthchecks.L4(),
-		forwardingRules: forwardingrules.NewForwardingRules(cloud, meta.VersionGA, scope),
+		forwardingRules: forwardingrules.New(cloud, meta.VersionGA, scope),
 	}
 	l.NamespacedName = types.NamespacedName{Name: service.Name, Namespace: service.Namespace}
 	l.backendPool = backends.NewPool(l.cloud, l.namer)

@@ -1,6 +1,7 @@
 package forwardingrules
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
@@ -19,16 +20,14 @@ func TestCreateForwardingRule(t *testing.T) {
 	}{
 		{
 			frRule: &composite.ForwardingRule{
-				Name:                "elb",
-				Description:         "elb description",
+				Name:                "NetLB",
 				LoadBalancingScheme: string(cloud.SchemeExternal),
 			},
 			desc: "Test creating external forwarding rule",
 		},
 		{
 			frRule: &composite.ForwardingRule{
-				Name:                "ilb",
-				Description:         "ilb description",
+				Name:                "ILB",
 				LoadBalancingScheme: string(cloud.SchemeInternal),
 			},
 			desc: "Test creating internal forwarding rule",
@@ -38,27 +37,30 @@ func TestCreateForwardingRule(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.desc, func(t *testing.T) {
 			fakeGCE := gce.NewFakeGCECloud(gce.DefaultTestClusterValues())
-			frc := NewForwardingRules(fakeGCE, meta.VersionGA, meta.Regional)
+			frc := New(fakeGCE, meta.VersionGA, meta.Regional)
 
 			err := frc.Create(tc.frRule)
 			if err != nil {
 				t.Fatalf("frc.Create(%v), returned error %v, want nil", tc.frRule, err)
 			}
 
-			verifyForwardingRuleExists(t, fakeGCE, tc.frRule.Name)
+			err = verifyForwardingRuleExists(fakeGCE, tc.frRule.Name)
+			if err != nil {
+				t.Errorf("verifyForwardingRuleExists(_, %s) returned error %v, want nil", tc.frRule.Name, err)
+			}
 		})
 	}
 }
 
 func TestGetForwardingRule(t *testing.T) {
 	elbForwardingRule := &composite.ForwardingRule{
-		Name:                "elb",
+		Name:                "NetLB",
 		Version:             meta.VersionGA,
 		Scope:               meta.Regional,
 		LoadBalancingScheme: string(cloud.SchemeExternal),
 	}
 	ilbForwardingRule := &composite.ForwardingRule{
-		Name:                "ilb",
+		Name:                "ILB",
 		Version:             meta.VersionGA,
 		Scope:               meta.Regional,
 		LoadBalancingScheme: string(cloud.SchemeInternal),
@@ -93,10 +95,8 @@ func TestGetForwardingRule(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.desc, func(t *testing.T) {
 			fakeGCE := gce.NewFakeGCECloud(gce.DefaultTestClusterValues())
-			for _, fr := range tc.existingFwdRules {
-				mustCreateForwardingRule(t, fakeGCE, fr)
-			}
-			frc := NewForwardingRules(fakeGCE, meta.VersionGA, meta.Regional)
+			frc := New(fakeGCE, meta.VersionGA, meta.Regional)
+			mustCreateForwardingRules(t, fakeGCE, tc.existingFwdRules)
 
 			fr, err := frc.Get(tc.getFwdRuleName)
 			if err != nil {
@@ -114,11 +114,11 @@ func TestGetForwardingRule(t *testing.T) {
 
 func TestDeleteForwardingRule(t *testing.T) {
 	elbForwardingRule := &composite.ForwardingRule{
-		Name:                "elb",
+		Name:                "NetLB",
 		LoadBalancingScheme: string(cloud.SchemeExternal),
 	}
 	ilbForwardingRule := &composite.ForwardingRule{
-		Name:                "ilb",
+		Name:                "ILB",
 		LoadBalancingScheme: string(cloud.SchemeInternal),
 	}
 
@@ -157,53 +157,64 @@ func TestDeleteForwardingRule(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.desc, func(t *testing.T) {
 			fakeGCE := gce.NewFakeGCECloud(gce.DefaultTestClusterValues())
-			for _, fr := range tc.existingFwdRules {
-				mustCreateForwardingRule(t, fakeGCE, fr)
-			}
-			frc := NewForwardingRules(fakeGCE, meta.VersionGA, meta.Regional)
+			frc := New(fakeGCE, meta.VersionGA, meta.Regional)
+			mustCreateForwardingRules(t, fakeGCE, tc.existingFwdRules)
 
 			err := frc.Delete(tc.deleteFwdRuleName)
 			if err != nil {
 				t.Fatalf("frc.Delete(%v), returned error %v, want nil", tc.deleteFwdRuleName, err)
 			}
 
-			verifyForwardingRuleNotExists(t, fakeGCE, tc.deleteFwdRuleName)
+			err = verifyForwardingRuleNotExists(fakeGCE, tc.deleteFwdRuleName)
+			if err != nil {
+				t.Errorf("verifyForwardingRuleNotExists(_, %s) returned error %v, want nil", tc.deleteFwdRuleName, err)
+			}
 			for _, fw := range tc.shouldExistFwdRules {
-				verifyForwardingRuleExists(t, fakeGCE, fw.Name)
+				err = verifyForwardingRuleExists(fakeGCE, fw.Name)
+				if err != nil {
+					t.Errorf("verifyForwardingRuleExists(_, %s) returned error %v, want nil", fw.Name, err)
+				}
 			}
 		})
 	}
 }
 
-func verifyForwardingRuleExists(t *testing.T, cloud *gce.Cloud, name string) {
-	t.Helper()
-	verifyForwardingRuleShouldExist(t, cloud, name, true)
-}
-
-func verifyForwardingRuleNotExists(t *testing.T, cloud *gce.Cloud, name string) {
-	t.Helper()
-	verifyForwardingRuleShouldExist(t, cloud, name, false)
-}
-
-func verifyForwardingRuleShouldExist(t *testing.T, cloud *gce.Cloud, name string, shouldExist bool) {
-	t.Helper()
-
+func verifyForwardingRuleExists(cloud *gce.Cloud, name string) error {
 	key, err := composite.CreateKey(cloud, name, meta.Regional)
 	if err != nil {
-		t.Fatalf("Failed to create key for fetching forwarding rule %s, err: %v", name, err)
+		return fmt.Errorf("failed to create key for fetching forwarding rule %s, err: %w", name, err)
 	}
+
 	_, err = composite.GetForwardingRule(cloud, key, meta.VersionGA)
 	if err != nil {
 		if utils.IsNotFoundError(err) {
-			if shouldExist {
-				t.Errorf("Forwarding rule %s was not found, expected to exist", name)
-			}
-			return
+			return fmt.Errorf("forwarding rule %s was not found, expected to exist", name)
 		}
-		t.Fatalf("composite.GetForwardingRule(_, %v, %v) returned error %v, want nil", key, meta.VersionGA, err)
+		return fmt.Errorf("composite.GetForwardingRule(_, %v, %v) returned error %w, want nil", key, meta.VersionGA, err)
 	}
-	if !shouldExist {
-		t.Errorf("Forwarding rule %s exists, expected to be not found", name)
+	return nil
+}
+
+func verifyForwardingRuleNotExists(cloud *gce.Cloud, name string) error {
+	key, err := composite.CreateKey(cloud, name, meta.Regional)
+	if err != nil {
+		return fmt.Errorf("failed to create key for fetching forwarding rule %s, err: %w", name, err)
+	}
+
+	_, err = composite.GetForwardingRule(cloud, key, meta.VersionGA)
+	if err != nil {
+		if utils.IsNotFoundError(err) {
+			return nil
+		}
+		return fmt.Errorf("composite.GetForwardingRule(_, %v, %v) returned error %w, want nil", key, meta.VersionGA, err)
+	}
+	return fmt.Errorf("forwarding rule %s exists, expected to be not found", name)
+}
+
+func mustCreateForwardingRules(t *testing.T, cloud *gce.Cloud, frs []*composite.ForwardingRule) {
+	t.Helper()
+	for _, fr := range frs {
+		mustCreateForwardingRule(t, cloud, fr)
 	}
 }
 

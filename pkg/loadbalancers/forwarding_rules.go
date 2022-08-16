@@ -296,11 +296,15 @@ func (l *L4) ensureForwardingRule(loadBalancerName, bsLink string, options gce.I
 	if err = l.forwardingRules.Create(fr); err != nil {
 		return nil, err
 	}
-	return l.forwardingRules.Get(fr.Name)
-}
 
-func (l *L4) GetForwardingRule(name string) (*composite.ForwardingRule, error) {
-	return l.forwardingRules.Get(name)
+	fr, err = l.forwardingRules.Get(fr.Name)
+	if err != nil {
+		return nil, err
+	}
+	if fr == nil {
+		return nil, fmt.Errorf("forwarding Rule %s not found", fr.Name)
+	}
+	return fr, nil
 }
 
 // ensureExternalForwardingRule creates a forwarding rule with the given name for L4NetLB,
@@ -398,6 +402,12 @@ func (l4netlb *L4NetLB) ensureExternalForwardingRule(bsLink string) (*composite.
 		return nil, IPAddrUndefined, err
 	}
 	createdFr, err := l4netlb.forwardingRules.Get(fr.Name)
+	if err != nil {
+		return nil, IPAddrUndefined, err
+	}
+	if createdFr == nil {
+		return nil, IPAddrUndefined, fmt.Errorf("forwarding rule %s not found", fr.Name)
+	}
 	return createdFr, isIPManaged, err
 }
 
@@ -410,10 +420,6 @@ func (l4netlb *L4NetLB) tearDownResourcesWithWrongNetworkTier(existingFwdRule *c
 		}
 	}
 	return am.TearDownAddressIPIfNetworkTierMismatch()
-}
-
-func (l4netlb *L4NetLB) GetForwardingRule(name string) (*composite.ForwardingRule, error) {
-	return l4netlb.forwardingRules.Get(name)
 }
 
 func Equal(fr1, fr2 *composite.ForwardingRule) (bool, error) {
