@@ -31,7 +31,7 @@ import (
 	"k8s.io/ingress-gce/pkg/compositeproviders"
 	"k8s.io/ingress-gce/pkg/context"
 	"k8s.io/ingress-gce/pkg/controller/translator"
-	"k8s.io/ingress-gce/pkg/instances"
+	"k8s.io/ingress-gce/pkg/instancegroups"
 	"k8s.io/ingress-gce/pkg/l4lb/metrics"
 	"k8s.io/ingress-gce/pkg/loadbalancers"
 	"k8s.io/ingress-gce/pkg/utils"
@@ -56,10 +56,11 @@ type L4NetLBController struct {
 	// syncTracker tracks the latest time an enqueued service was synced
 	syncTracker utils.TimeTracker
 
-	backendPool     *backends.Backends
-	instancePool    instances.NodePool
-	igLinker        *backends.RegionalInstanceGroupLinker
-	forwardingRules ForwardingRulesGetter
+	backendPool              *backends.Backends
+	instanceGroupsController *instancegroups.Controller
+	instanceGroupsSyncer     *instancegroups.Syncer
+	igLinker                 *backends.RegionalInstanceGroupLinker
+	forwardingRules          ForwardingRulesGetter
 }
 
 // NewL4NetLBController creates a controller for l4 external loadbalancer.
@@ -73,16 +74,16 @@ func NewL4NetLBController(
 
 	backendPool := backends.NewPool(ctx.Cloud, ctx.L4Namer)
 	l4netLBc := &L4NetLBController{
-		ctx:             ctx,
-		serviceLister:   ctx.ServiceInformer.GetIndexer(),
-		nodeLister:      listers.NewNodeLister(ctx.NodeInformer.GetIndexer()),
-		stopCh:          stopCh,
-		translator:      ctx.Translator,
-		backendPool:     backendPool,
-		namer:           ctx.L4Namer,
-		instancePool:    ctx.InstancePool,
-		igLinker:        backends.NewRegionalInstanceGroupLinker(ctx.InstancePool, backendPool),
-		forwardingRules: compositeproviders.NewForwardingRules(ctx.Cloud, meta.VersionGA, meta.Regional),
+		ctx:                      ctx,
+		serviceLister:            ctx.ServiceInformer.GetIndexer(),
+		nodeLister:               listers.NewNodeLister(ctx.NodeInformer.GetIndexer()),
+		stopCh:                   stopCh,
+		translator:               ctx.Translator,
+		backendPool:              backendPool,
+		namer:                    ctx.L4Namer,
+		instanceGroupsController: ctx.InstanceGroupsCon,
+		igLinker:                 backends.NewRegionalInstanceGroupLinker(ctx.InstancePool, backendPool),
+		forwardingRules:          compositeproviders.NewForwardingRules(ctx.Cloud, meta.VersionGA, meta.Regional),
 	}
 	l4netLBc.svcQueue = utils.NewPeriodicTaskQueueWithMultipleWorkers("l4netLB", "services", ctx.NumL4Workers, l4netLBc.sync)
 
@@ -508,7 +509,7 @@ func (lc *L4NetLBController) garbageCollectRBSNetLB(key string, svc *v1.Service)
 		return result
 	}
 
-	// Try to delete instance group, instancePool.DeleteInstanceGroup ignores errors if resource is in use or not found.
+	// Try to delete instance group, instancePool.DeleteInstanceGroupInAllZones ignores errors if resource is in use or not found.
 	// TODO(cezarygerard) replace with multi-IG management
 	if err := lc.instancePool.DeleteInstanceGroup(lc.namer.InstanceGroup()); err != nil {
 		lc.ctx.Recorder(svc.Namespace).Eventf(svc, v1.EventTypeWarning, "DeleteInstanceGroupFailed",

@@ -22,7 +22,6 @@ import (
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/mock"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/ingress-gce/pkg/instances"
 	"k8s.io/ingress-gce/pkg/test"
 	"k8s.io/ingress-gce/pkg/utils"
 	"k8s.io/ingress-gce/pkg/utils/namer"
@@ -45,9 +44,9 @@ func linkerTestClusterValues() gce.TestClusterValues {
 }
 
 func newTestRegionalIgLinker(fakeGCE *gce.Cloud, backendPool *Backends, l4Namer *namer.L4Namer) *RegionalInstanceGroupLinker {
-	fakeIGs := instances.NewEmptyFakeInstanceGroups()
-	fakeZL := &instances.FakeZoneLister{Zones: []string{uscentralzone}}
-	fakeInstancePool := instances.NewNodePool(&instances.NodePoolConfig{
+	fakeIGs := instancegroupssyncer.NewEmptyFakeInstanceGroups()
+	fakeZL := &instancegroupssyncer.FakeZoneLister{Zones: []string{uscentralzone}}
+	fakeInstancePool := instancegroupssyncer.NewNodePool(&instancegroupssyncer.NodePoolConfig{
 		Cloud:      fakeIGs,
 		Namer:      l4Namer,
 		Recorders:  &test.FakeRecorderSource{},

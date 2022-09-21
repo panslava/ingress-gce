@@ -43,7 +43,6 @@ import (
 	"k8s.io/ingress-gce/pkg/flags"
 	"k8s.io/ingress-gce/pkg/frontendconfig"
 	"k8s.io/ingress-gce/pkg/healthchecks"
-	"k8s.io/ingress-gce/pkg/instances"
 	"k8s.io/ingress-gce/pkg/loadbalancers"
 	"k8s.io/ingress-gce/pkg/loadbalancers/features"
 	"k8s.io/ingress-gce/pkg/metrics"
@@ -77,7 +76,7 @@ type LoadBalancerController struct {
 	hasSynced func() bool
 
 	// Resource pools.
-	instancePool instances.NodePool
+	instancePool instancegroupssyncer.NodePool
 	l7Pool       loadbalancers.LoadBalancerPool
 
 	// syncer implementation for backends

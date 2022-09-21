@@ -28,14 +28,13 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/ingress-gce/pkg/annotations"
 	"k8s.io/ingress-gce/pkg/healthchecks"
-	"k8s.io/ingress-gce/pkg/instances"
 	"k8s.io/ingress-gce/pkg/test"
 	"k8s.io/ingress-gce/pkg/utils"
 	"k8s.io/legacy-cloud-providers/gce"
 )
 
 type Jig struct {
-	fakeInstancePool instances.NodePool
+	fakeInstancePool instancegroupssyncer.NodePool
 	linker           Linker
 	syncer           Syncer
 	pool             Pool
@@ -45,9 +44,9 @@ func newTestJig(fakeGCE *gce.Cloud) *Jig {
 	fakeHealthChecks := healthchecks.NewHealthChecker(fakeGCE, "/", defaultBackendSvc)
 	fakeBackendPool := NewPool(fakeGCE, defaultNamer)
 
-	fakeIGs := instances.NewEmptyFakeInstanceGroups()
-	fakeZL := &instances.FakeZoneLister{Zones: []string{defaultZone}}
-	fakeInstancePool := instances.NewNodePool(&instances.NodePoolConfig{
+	fakeIGs := instancegroupssyncer.NewEmptyFakeInstanceGroups()
+	fakeZL := &instancegroupssyncer.FakeZoneLister{Zones: []string{defaultZone}}
+	fakeInstancePool := instancegroupssyncer.NewNodePool(&instancegroupssyncer.NodePoolConfig{
 		Cloud:      fakeIGs,
 		Namer:      defaultNamer,
 		Recorders:  &test.FakeRecorderSource{},

@@ -30,7 +30,6 @@ import (
 	"k8s.io/ingress-gce/pkg/annotations"
 	"k8s.io/ingress-gce/pkg/backends/features"
 	"k8s.io/ingress-gce/pkg/composite"
-	"k8s.io/ingress-gce/pkg/instances"
 	"k8s.io/ingress-gce/pkg/test"
 	"k8s.io/ingress-gce/pkg/utils"
 	"k8s.io/legacy-cloud-providers/gce"
@@ -38,7 +37,7 @@ import (
 
 const defaultZone = "zone-a"
 
-func newTestIGLinker(fakeGCE *gce.Cloud, fakeInstancePool instances.NodePool) *instanceGroupLinker {
+func newTestIGLinker(fakeGCE *gce.Cloud, fakeInstancePool instancegroupssyncer.NodePool) *instanceGroupLinker {
 	fakeBackendPool := NewPool(fakeGCE, defaultNamer)
 
 	// Add standard hooks for mocking update calls. Each test can set a different update hook if it chooses to.
@@ -50,10 +49,10 @@ func newTestIGLinker(fakeGCE *gce.Cloud, fakeInstancePool instances.NodePool) *i
 }
 
 func TestLink(t *testing.T) {
-	fakeIGs := instances.NewEmptyFakeInstanceGroups()
+	fakeIGs := instancegroupssyncer.NewEmptyFakeInstanceGroups()
 	fakeGCE := gce.NewFakeGCECloud(gce.DefaultTestClusterValues())
-	fakeZL := &instances.FakeZoneLister{Zones: []string{defaultZone}}
-	fakeNodePool := instances.NewNodePool(&instances.NodePoolConfig{
+	fakeZL := &instancegroupssyncer.FakeZoneLister{Zones: []string{defaultZone}}
+	fakeNodePool := instancegroupssyncer.NewNodePool(&instancegroupssyncer.NodePoolConfig{
 		Cloud:      fakeIGs,
 		Namer:      defaultNamer,
 		Recorders:  &test.FakeRecorderSource{},
@@ -88,10 +87,10 @@ func TestLink(t *testing.T) {
 }
 
 func TestLinkWithCreationModeError(t *testing.T) {
-	fakeIGs := instances.NewEmptyFakeInstanceGroups()
+	fakeIGs := instancegroupssyncer.NewEmptyFakeInstanceGroups()
 	fakeGCE := gce.NewFakeGCECloud(gce.DefaultTestClusterValues())
-	fakeZL := &instances.FakeZoneLister{Zones: []string{defaultZone}}
-	fakeNodePool := instances.NewNodePool(&instances.NodePoolConfig{
+	fakeZL := &instancegroupssyncer.FakeZoneLister{Zones: []string{defaultZone}}
+	fakeNodePool := instancegroupssyncer.NewNodePool(&instancegroupssyncer.NodePoolConfig{
 		Cloud:      fakeIGs,
 		Namer:      defaultNamer,
 		Recorders:  &test.FakeRecorderSource{},

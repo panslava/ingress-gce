@@ -1,20 +1,4 @@
-/*
-Copyright 2015 The Kubernetes Authors.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
-package instances
+package instancegroups
 
 import (
 	"fmt"
@@ -23,6 +7,7 @@ import (
 
 	"google.golang.org/api/compute/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/ingress-gce/pkg/test"
 	"k8s.io/ingress-gce/pkg/utils/namer"
 )
@@ -34,19 +19,18 @@ const (
 
 var defaultNamer = namer.NewNamer("uid1", "fw1")
 
-func newNodePool(f *FakeInstanceGroups, zone string, maxIGSize int) NodePool {
-	pool := NewNodePool(&NodePoolConfig{
+func newTestSyncer(f *FakeInstanceGroups, zone string, maxIGSize int) *Syncer {
+	return NewSyncer(&SyncerConfig{
 		Cloud:      f,
 		Namer:      defaultNamer,
-		Recorders:  &test.FakeRecorderSource{},
-		BasePath:   basePath,
 		ZoneLister: &FakeZoneLister{[]string{zone}},
+		Recorder:   record.NewFakeRecorder(100),
+		BasePath:   basePath,
 		MaxIGSize:  maxIGSize,
 	})
-	return pool
 }
 
-func TestNodePoolSync(t *testing.T) {
+func TestSync(t *testing.T) {
 	maxIGSize := 1000
 
 	names1001 := make([]string, maxIGSize+1)
@@ -83,29 +67,22 @@ func TestNodePoolSync(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		// create fake gce node pool with existing gceNodes
-		ig := &compute.InstanceGroup{Name: defaultNamer.InstanceGroup()}
-		zonesToIGs := map[string]IGsToInstances{
+		// create fake gce instance groups with existing gceNodes
+		igName := defaultNamer.InstanceGroup()
+		ig := &compute.InstanceGroup{Name: igName}
+		zonesToIGs := ZonesToIGsToInstances{
 			defaultZone: {
 				ig: testCase.gceNodes,
 			},
 		}
 		fakeGCEInstanceGroups := NewFakeInstanceGroups(zonesToIGs, maxIGSize)
 
-		pool := newNodePool(fakeGCEInstanceGroups, defaultZone, maxIGSize)
-
-		igName := defaultNamer.InstanceGroup()
-		ports := []int64{80}
-		_, err := pool.EnsureInstanceGroupsAndPorts(igName, ports)
-		if err != nil {
-			t.Fatalf("pool.EnsureInstanceGroupsAndPorts(%s, %v) returned error %v, want nil", igName, ports, err)
-		}
-
+		igSyncer := newTestSyncer(fakeGCEInstanceGroups, defaultZone, maxIGSize)
 		// run sync with expected kubeNodes
 		apiCallsCountBeforeSync := len(fakeGCEInstanceGroups.calls)
-		err = pool.Sync(testCase.kubeNodes.List())
+		err := igSyncer.Sync(testCase.kubeNodes.List())
 		if err != nil {
-			t.Fatalf("pool.Sync(%v) returned error %v, want nil", testCase.kubeNodes.List(), err)
+			t.Fatalf("igSyncer.Sync(%v) returned error %v, want nil", testCase.kubeNodes.List(), err)
 		}
 
 		// run assertions
@@ -138,69 +115,13 @@ func TestNodePoolSync(t *testing.T) {
 
 		// call sync one more time and check that it will be no-op and will not cause any api calls
 		apiCallsCountBeforeSync = len(fakeGCEInstanceGroups.calls)
-		err = pool.Sync(testCase.kubeNodes.List())
+		err = igSyncer.Sync(testCase.kubeNodes.List())
 		if err != nil {
-			t.Fatalf("pool.Sync(%v) returned error %v, want nil", testCase.kubeNodes.List(), err)
+			t.Fatalf("igSyncer.Sync(%v) returned error %v, want nil", testCase.kubeNodes.List(), err)
 		}
 		apiCallsCountAfterSync = len(fakeGCEInstanceGroups.calls)
 		if apiCallsCountBeforeSync != apiCallsCountAfterSync {
 			t.Errorf("Should skip sync if called second time with the same kubeNodes. apiCallsCountBeforeSync = %d, apiCallsCountAfterSync = %d", apiCallsCountBeforeSync, apiCallsCountAfterSync)
-		}
-	}
-}
-
-func TestSetNamedPorts(t *testing.T) {
-	maxIGSize := 1000
-	zonesToIGs := map[string]IGsToInstances{
-		defaultZone: {
-			&compute.InstanceGroup{Name: "ig"}: sets.NewString("ig"),
-		},
-	}
-	fakeIGs := NewFakeInstanceGroups(zonesToIGs, maxIGSize)
-	pool := newNodePool(fakeIGs, defaultZone, maxIGSize)
-
-	testCases := []struct {
-		activePorts   []int64
-		expectedPorts []int64
-	}{
-		{
-			// Verify setting a port works as expected.
-			[]int64{80},
-			[]int64{80},
-		},
-		{
-			// Utilizing multiple new ports
-			[]int64{81, 82},
-			[]int64{80, 81, 82},
-		},
-		{
-			// Utilizing existing ports
-			[]int64{80, 82},
-			[]int64{80, 81, 82},
-		},
-		{
-			// Utilizing a new port and an old port
-			[]int64{80, 83},
-			[]int64{80, 81, 82, 83},
-		},
-		// TODO: Add tests to remove named ports when we support that.
-	}
-	for _, testCase := range testCases {
-		igs, err := pool.EnsureInstanceGroupsAndPorts("ig", testCase.activePorts)
-		if err != nil {
-			t.Fatalf("unexpected error in setting ports %v to instance group: %s", testCase.activePorts, err)
-		}
-		if len(igs) != 1 {
-			t.Fatalf("expected a single instance group, got: %v", igs)
-		}
-		actualPorts := igs[0].NamedPorts
-		if len(actualPorts) != len(testCase.expectedPorts) {
-			t.Fatalf("unexpected named ports on instance group. expected: %v, got: %v", testCase.expectedPorts, actualPorts)
-		}
-		for i, p := range igs[0].NamedPorts {
-			if p.Port != testCase.expectedPorts[i] {
-				t.Fatalf("unexpected named ports on instance group. expected: %v, got: %v", testCase.expectedPorts, actualPorts)
-			}
 		}
 	}
 }
@@ -212,8 +133,8 @@ func TestGetInstanceReferences(t *testing.T) {
 			&compute.InstanceGroup{Name: "ig"}: sets.NewString("ig"),
 		},
 	}
-	pool := newNodePool(NewFakeInstanceGroups(zonesToIGs, maxIGSize), defaultZone, maxIGSize)
-	instances := pool.(*Instances)
+	fakeGCE := NewFakeInstanceGroups(zonesToIGs, maxIGSize)
+	syncer := newTestSyncer(fakeGCE, defaultZone, maxIGSize)
 
 	nodeNames := []string{"node-1", "node-2", "node-3", "node-4.region.zone"}
 
@@ -223,7 +144,7 @@ func TestGetInstanceReferences(t *testing.T) {
 		expectedRefs[fmt.Sprintf("%szones/%s/instances/%s", basePath, defaultZone, name)] = struct{}{}
 	}
 
-	refs := instances.getInstanceReferences(defaultZone, nodeNames)
+	refs := syncer.getInstancesReferences(defaultZone, nodeNames)
 	for _, ref := range refs {
 		if _, ok := expectedRefs[ref.Instance]; !ok {
 			t.Errorf("found unexpected reference: %s, expected only %+v", ref.Instance, expectedRefs)

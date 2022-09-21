@@ -21,7 +21,6 @@ import (
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/ingress-gce/pkg/composite"
-	"k8s.io/ingress-gce/pkg/instances"
 	"k8s.io/ingress-gce/pkg/utils"
 	"k8s.io/klog/v2"
 )
@@ -63,14 +62,14 @@ const maxRPS = 1
 
 // instanceGroupLinker handles linking backends to InstanceGroup's.
 type instanceGroupLinker struct {
-	instancePool instances.NodePool
+	instancePool instancegroupssyncer.NodePool
 	backendPool  Pool
 }
 
 // instanceGroupLinker is a Linker
 var _ Linker = (*instanceGroupLinker)(nil)
 
-func NewInstanceGroupLinker(instancePool instances.NodePool, backendPool Pool) Linker {
+func NewInstanceGroupLinker(instancePool instancegroupssyncer.NodePool, backendPool Pool) Linker {
 	return &instanceGroupLinker{
 		instancePool: instancePool,
 		backendPool:  backendPool,

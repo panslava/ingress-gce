@@ -23,7 +23,6 @@ import (
 	listers "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/ingress-gce/pkg/context"
-	"k8s.io/ingress-gce/pkg/instances"
 	"k8s.io/ingress-gce/pkg/utils"
 	"k8s.io/klog/v2"
 )
@@ -36,7 +35,7 @@ type NodeController struct {
 	// queue is the TaskQueue used to manage the node worker updates.
 	queue utils.TaskQueue
 	// instancePool is a NodePool to manage kubernetes nodes.
-	instancePool instances.NodePool
+	instancePool instancegroupssyncer.NodePool
 	// hasSynced returns true if relevant caches have done their initial
 	// synchronization.
 	hasSynced func() bool
