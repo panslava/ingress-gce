@@ -381,23 +381,28 @@ func TestComputeL4NetLBMetrics(t *testing.T) {
 
 func TestComputeL4NetLBDualStackMetrics(t *testing.T) {
 	t.Parallel()
+
+	currTime := time.Now()
+	before10min := currTime.Add(-10 * time.Minute)
+	before20min := currTime.Add(-20 * time.Minute)
+
 	for _, tc := range []struct {
 		desc                        string
 		serviceStates               []L4DualStackServiceState
-		expectL4NetLBDualStackCount map[L4DualStackServiceState]int
+		expectL4NetLBDualStackCount map[L4DualStackServiceCount]int
 	}{
 		{
 			desc:                        "empty input",
 			serviceStates:               []L4DualStackServiceState{},
-			expectL4NetLBDualStackCount: map[L4DualStackServiceState]int{},
+			expectL4NetLBDualStackCount: map[L4DualStackServiceCount]int{},
 		},
 		{
 			desc: "one l4 NetLB dual-stack service",
 			serviceStates: []L4DualStackServiceState{
-				newL4DualStackServiceState("IPv4", "SingleStack", StatusSuccess),
+				newL4DualStackServiceState("IPv4", "SingleStack", StatusSuccess, nil),
 			},
-			expectL4NetLBDualStackCount: map[L4DualStackServiceState]int{
-				L4DualStackServiceState{
+			expectL4NetLBDualStackCount: map[L4DualStackServiceCount]int{
+				L4DualStackServiceCount{
 					"IPv4",
 					"SingleStack",
 					StatusSuccess,
@@ -407,10 +412,10 @@ func TestComputeL4NetLBDualStackMetrics(t *testing.T) {
 		{
 			desc: "l4 NetLB dual-stack service in error state",
 			serviceStates: []L4DualStackServiceState{
-				newL4DualStackServiceState("IPv4", "SingleStack", StatusError),
+				newL4DualStackServiceState("IPv4", "SingleStack", StatusError, nil),
 			},
-			expectL4NetLBDualStackCount: map[L4DualStackServiceState]int{
-				L4DualStackServiceState{
+			expectL4NetLBDualStackCount: map[L4DualStackServiceCount]int{
+				L4DualStackServiceCount{
 					"IPv4",
 					"SingleStack",
 					StatusError,
@@ -418,12 +423,38 @@ func TestComputeL4NetLBDualStackMetrics(t *testing.T) {
 			},
 		},
 		{
+			desc: "l4 NetLB dual-stack service in error state, for 10 minutes",
+			serviceStates: []L4DualStackServiceState{
+				newL4DualStackServiceState("IPv4", "SingleStack", StatusError, &before10min),
+			},
+			expectL4NetLBDualStackCount: map[L4DualStackServiceCount]int{
+				L4DualStackServiceCount{
+					"IPv4",
+					"SingleStack",
+					StatusError,
+				}: 1,
+			},
+		},
+		{
+			desc: "l4 NetLB dual-stack service in error state, for 20 minutes",
+			serviceStates: []L4DualStackServiceState{
+				newL4DualStackServiceState("IPv4", "SingleStack", StatusError, &before20min),
+			},
+			expectL4NetLBDualStackCount: map[L4DualStackServiceCount]int{
+				L4DualStackServiceCount{
+					"IPv4",
+					"SingleStack",
+					StatusPersistentError,
+				}: 1,
+			},
+		},
+		{
 			desc: "L4 NetLB dual-stack service with IPv4,IPv6 Families",
 			serviceStates: []L4DualStackServiceState{
-				newL4DualStackServiceState("IPv4,IPv6", "RequireDualStack", StatusSuccess),
+				newL4DualStackServiceState("IPv4,IPv6", "RequireDualStack", StatusSuccess, nil),
 			},
-			expectL4NetLBDualStackCount: map[L4DualStackServiceState]int{
-				L4DualStackServiceState{
+			expectL4NetLBDualStackCount: map[L4DualStackServiceCount]int{
+				L4DualStackServiceCount{
 					"IPv4,IPv6",
 					"RequireDualStack",
 					StatusSuccess,
@@ -433,28 +464,35 @@ func TestComputeL4NetLBDualStackMetrics(t *testing.T) {
 		{
 			desc: "many l4 NetLB dual-stack services",
 			serviceStates: []L4DualStackServiceState{
-				newL4DualStackServiceState("IPv4,IPv6", "RequireDualStack", StatusSuccess),
-				newL4DualStackServiceState("IPv4,IPv6", "RequireDualStack", StatusSuccess),
-				newL4DualStackServiceState("IPv4", "SingleStack", StatusError),
-				newL4DualStackServiceState("IPv6", "SingleStack", StatusSuccess),
-				newL4DualStackServiceState("IPv6", "SingleStack", StatusSuccess),
+				newL4DualStackServiceState("IPv4,IPv6", "RequireDualStack", StatusSuccess, nil),
+				newL4DualStackServiceState("IPv4,IPv6", "RequireDualStack", StatusSuccess, nil),
+				newL4DualStackServiceState("IPv4", "SingleStack", StatusError, nil),
+				newL4DualStackServiceState("IPv6", "SingleStack", StatusSuccess, nil),
+				newL4DualStackServiceState("IPv6", "SingleStack", StatusSuccess, nil),
+				newL4DualStackServiceState("IPv4", "SingleStack", StatusError, &before10min),
+				newL4DualStackServiceState("IPv4", "SingleStack", StatusError, &before20min),
 			},
-			expectL4NetLBDualStackCount: map[L4DualStackServiceState]int{
-				L4DualStackServiceState{
+			expectL4NetLBDualStackCount: map[L4DualStackServiceCount]int{
+				L4DualStackServiceCount{
 					"IPv4,IPv6",
 					"RequireDualStack",
 					StatusSuccess,
 				}: 2,
-				L4DualStackServiceState{
+				L4DualStackServiceCount{
 					"IPv4",
 					"SingleStack",
 					StatusError,
-				}: 1,
-				L4DualStackServiceState{
+				}: 2,
+				L4DualStackServiceCount{
 					"IPv6",
 					"SingleStack",
 					StatusSuccess,
 				}: 2,
+				L4DualStackServiceCount{
+					"IPv4",
+					"SingleStack",
+					StatusPersistentError,
+				}: 1,
 			},
 		},
 	} {
@@ -514,6 +552,58 @@ func TestRetryPeriodForL4NetLBServices(t *testing.T) {
 	}
 }
 
+func TestRetryPeriodForL4ILBDualStackServices(t *testing.T) {
+	t.Parallel()
+	currTime := time.Now()
+	before5min := currTime.Add(-5 * time.Minute)
+
+	svcName1 := "svc1"
+	metrics := FakeControllerMetrics()
+
+	errorState := newL4DualStackServiceState("IPv4", "SingleStack", StatusError, &currTime)
+	metrics.SetL4ILBDualStackService(svcName1, errorState)
+
+	// change FirstSyncErrorTime and verify it will not change metrics state
+	errorState.FirstSyncErrorTime = &before5min
+	metrics.SetL4ILBDualStackService(svcName1, errorState)
+	state, ok := metrics.l4ILBDualStackServiceMap[svcName1]
+	if !ok {
+		t.Fatalf("state should be set")
+	}
+	if *state.FirstSyncErrorTime != currTime {
+		t.Errorf("FirstSyncErrorTime should not change, expected %v, got %v", currTime, *state.FirstSyncErrorTime)
+	}
+	if state.Status != StatusError {
+		t.Errorf("Expected status %s, got %s", StatusError, state.Status)
+	}
+}
+
+func TestRetryPeriodForL4NetLBDualStackServices(t *testing.T) {
+	t.Parallel()
+	currTime := time.Now()
+	before5min := currTime.Add(-5 * time.Minute)
+
+	svcName1 := "svc1"
+	metrics := FakeControllerMetrics()
+
+	errorState := newL4DualStackServiceState("IPv4", "SingleStack", StatusError, &currTime)
+	metrics.SetL4NetLBDualStackService(svcName1, errorState)
+
+	// change FirstSyncErrorTime and verify it will not change metrics state
+	errorState.FirstSyncErrorTime = &before5min
+	metrics.SetL4NetLBDualStackService(svcName1, errorState)
+	state, ok := metrics.l4NetLBDualStackServiceMap[svcName1]
+	if !ok {
+		t.Fatalf("state should be set")
+	}
+	if *state.FirstSyncErrorTime != currTime {
+		t.Errorf("FirstSyncErrorTime should not change, expected %v, got %v", currTime, *state.FirstSyncErrorTime)
+	}
+	if state.Status != StatusError {
+		t.Errorf("Expected status %s, got %s", StatusError, state.Status)
+	}
+}
+
 func checkMetricsComputation(newMetrics *ControllerMetrics, expErrorCount, expSvcCount int) error {
 	got := newMetrics.computeL4NetLBMetrics()
 	if got.inError != expErrorCount {
@@ -527,23 +617,28 @@ func checkMetricsComputation(newMetrics *ControllerMetrics, expErrorCount, expSv
 
 func TestComputeL4ILBDualStackMetrics(t *testing.T) {
 	t.Parallel()
+
+	currTime := time.Now()
+	before10min := currTime.Add(-10 * time.Minute)
+	before20min := currTime.Add(-20 * time.Minute)
+
 	for _, tc := range []struct {
 		desc                      string
 		serviceStates             []L4DualStackServiceState
-		expectL4ILBDualStackCount map[L4DualStackServiceState]int
+		expectL4ILBDualStackCount map[L4DualStackServiceCount]int
 	}{
 		{
 			desc:                      "empty input",
 			serviceStates:             []L4DualStackServiceState{},
-			expectL4ILBDualStackCount: map[L4DualStackServiceState]int{},
+			expectL4ILBDualStackCount: map[L4DualStackServiceCount]int{},
 		},
 		{
 			desc: "one l4 ilb dual-stack service",
 			serviceStates: []L4DualStackServiceState{
-				newL4DualStackServiceState("IPv4", "SingleStack", StatusSuccess),
+				newL4DualStackServiceState("IPv4", "SingleStack", StatusSuccess, nil),
 			},
-			expectL4ILBDualStackCount: map[L4DualStackServiceState]int{
-				L4DualStackServiceState{
+			expectL4ILBDualStackCount: map[L4DualStackServiceCount]int{
+				L4DualStackServiceCount{
 					"IPv4",
 					"SingleStack",
 					StatusSuccess,
@@ -553,10 +648,10 @@ func TestComputeL4ILBDualStackMetrics(t *testing.T) {
 		{
 			desc: "l4 ilb dual-stack service in error state",
 			serviceStates: []L4DualStackServiceState{
-				newL4DualStackServiceState("IPv4", "SingleStack", StatusError),
+				newL4DualStackServiceState("IPv4", "SingleStack", StatusError, nil),
 			},
-			expectL4ILBDualStackCount: map[L4DualStackServiceState]int{
-				L4DualStackServiceState{
+			expectL4ILBDualStackCount: map[L4DualStackServiceCount]int{
+				L4DualStackServiceCount{
 					"IPv4",
 					"SingleStack",
 					StatusError,
@@ -564,12 +659,38 @@ func TestComputeL4ILBDualStackMetrics(t *testing.T) {
 			},
 		},
 		{
+			desc: "l4 ilb dual-stack service in error state, for 10 minutes",
+			serviceStates: []L4DualStackServiceState{
+				newL4DualStackServiceState("IPv4", "SingleStack", StatusError, &before10min),
+			},
+			expectL4ILBDualStackCount: map[L4DualStackServiceCount]int{
+				L4DualStackServiceCount{
+					"IPv4",
+					"SingleStack",
+					StatusError,
+				}: 1,
+			},
+		},
+		{
+			desc: "l4 ilb dual-stack service in error state, for 20 minutes",
+			serviceStates: []L4DualStackServiceState{
+				newL4DualStackServiceState("IPv4", "SingleStack", StatusError, &before20min),
+			},
+			expectL4ILBDualStackCount: map[L4DualStackServiceCount]int{
+				L4DualStackServiceCount{
+					"IPv4",
+					"SingleStack",
+					StatusPersistentError,
+				}: 1,
+			},
+		},
+		{
 			desc: "L4 ILB dual-stack service with IPv4,IPv6 Families",
 			serviceStates: []L4DualStackServiceState{
-				newL4DualStackServiceState("IPv4,IPv6", "RequireDualStack", StatusSuccess),
+				newL4DualStackServiceState("IPv4,IPv6", "RequireDualStack", StatusSuccess, nil),
 			},
-			expectL4ILBDualStackCount: map[L4DualStackServiceState]int{
-				L4DualStackServiceState{
+			expectL4ILBDualStackCount: map[L4DualStackServiceCount]int{
+				L4DualStackServiceCount{
 					"IPv4,IPv6",
 					"RequireDualStack",
 					StatusSuccess,
@@ -579,28 +700,35 @@ func TestComputeL4ILBDualStackMetrics(t *testing.T) {
 		{
 			desc: "many l4 ilb dual-stack services",
 			serviceStates: []L4DualStackServiceState{
-				newL4DualStackServiceState("IPv4,IPv6", "RequireDualStack", StatusSuccess),
-				newL4DualStackServiceState("IPv4,IPv6", "RequireDualStack", StatusSuccess),
-				newL4DualStackServiceState("IPv4", "SingleStack", StatusError),
-				newL4DualStackServiceState("IPv6", "SingleStack", StatusSuccess),
-				newL4DualStackServiceState("IPv6", "SingleStack", StatusSuccess),
+				newL4DualStackServiceState("IPv4,IPv6", "RequireDualStack", StatusSuccess, nil),
+				newL4DualStackServiceState("IPv4,IPv6", "RequireDualStack", StatusSuccess, nil),
+				newL4DualStackServiceState("IPv4", "SingleStack", StatusError, nil),
+				newL4DualStackServiceState("IPv6", "SingleStack", StatusSuccess, nil),
+				newL4DualStackServiceState("IPv6", "SingleStack", StatusSuccess, nil),
+				newL4DualStackServiceState("IPv4", "SingleStack", StatusError, &before10min),
+				newL4DualStackServiceState("IPv4", "SingleStack", StatusError, &before20min),
 			},
-			expectL4ILBDualStackCount: map[L4DualStackServiceState]int{
-				L4DualStackServiceState{
+			expectL4ILBDualStackCount: map[L4DualStackServiceCount]int{
+				L4DualStackServiceCount{
 					"IPv4,IPv6",
 					"RequireDualStack",
 					StatusSuccess,
 				}: 2,
-				L4DualStackServiceState{
+				L4DualStackServiceCount{
 					"IPv4",
 					"SingleStack",
 					StatusError,
-				}: 1,
-				L4DualStackServiceState{
+				}: 2,
+				L4DualStackServiceCount{
 					"IPv6",
 					"SingleStack",
 					StatusSuccess,
 				}: 2,
+				L4DualStackServiceCount{
+					"IPv4",
+					"SingleStack",
+					StatusPersistentError,
+				}: 1,
 			},
 		},
 	} {
@@ -619,10 +747,13 @@ func TestComputeL4ILBDualStackMetrics(t *testing.T) {
 	}
 }
 
-func newL4DualStackServiceState(ipFamilies string, ipFamilyPolicy string, status L4DualStackServiceStatus) L4DualStackServiceState {
+func newL4DualStackServiceState(ipFamilies string, ipFamilyPolicy string, status L4DualStackServiceStatus, firstSyncErrorTime *time.Time) L4DualStackServiceState {
 	return L4DualStackServiceState{
-		IPFamilies:     ipFamilies,
-		IPFamilyPolicy: ipFamilyPolicy,
-		Status:         status,
+		L4DualStackServiceCount: L4DualStackServiceCount{
+			IPFamilies:     ipFamilies,
+			IPFamilyPolicy: ipFamilyPolicy,
+			Status:         status,
+		},
+		FirstSyncErrorTime: firstSyncErrorTime,
 	}
 }
