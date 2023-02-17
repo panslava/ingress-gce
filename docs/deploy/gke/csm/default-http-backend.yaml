@@ -6,8 +6,8 @@ metadata:
   labels:
     k8s-app: glbc
     kubernetes.io/name: "GLBC"
+    kubernetes.io/cluster-service: "true"
 spec:
-  replicas: 1
   selector:
     matchLabels:
       k8s-app: glbc
@@ -16,13 +16,12 @@ spec:
       labels:
         k8s-app: glbc
         name: glbc
-    spec:
       containers:
       - name: default-http-backend
         # Any image is permissible as long as:
         # 1. It serves a 404 page at /
         # 2. It serves 200 on a /healthz endpoint
-        image: k8s.gcr.io/defaultbackend-amd64:1.5
+        image: "{{.AddonsImageRegistry}}/ingress-gce-404-server-with-metrics:v1.20.1@sha256:db0da35d09eac10f75b62a2b35c46b7614204fd9e3eb70cc2655faf87544c7cf"
         livenessProbe:
           httpGet:
             path: /healthz
@@ -33,9 +32,6 @@ spec:
         ports:
         - containerPort: 8080
         resources:
-          limits:
-            cpu: 10m
-            memory: 20Mi
           requests:
             cpu: 10m
             memory: 20Mi

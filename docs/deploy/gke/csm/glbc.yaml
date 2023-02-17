@@ -19,10 +19,9 @@ spec:
         k8s-app: gcp-lb-controller
         name: gcp-lb-controller
     spec:
-      serviceAccountName: glbc
       terminationGracePeriodSeconds: 600
       containers:
-      - image: k8s.gcr.io/ingress-gce-glbc-amd64:v1.8.0
+      - image: gcr.io/k8s-ingress-image-push/ingress-gce-glbc-amd64:nightly
         livenessProbe:
           httpGet:
             path: /healthz
@@ -47,27 +46,55 @@ spec:
             memory: 50Mi
         command:
         - /glbc
-        - -v2
+        - --v=3
+        - --logtostderr=true
+        - --enable-finalizer-remove
+        - --default-backend-service=kube-system/default-http-backend
+        - --kubeconfig=/etc/srv/kubernetes/l7-lb-controller/kubeconfig
+        - --sync-period=600s
+        - --running-in-cluster=false
         - --config-file-path=/etc/gce/gce.conf
         - --healthz-port=8086
-        - --logtostderr
-        - --sync-period=600s
-        - --gce-ratelimit=ga.Operations.Get,qps,10,100
-        - --gce-ratelimit=alpha.Operations.Get,qps,10,100
-        - --gce-ratelimit=beta.Operations.Get,qps,10,100
+        - --gce-ratelimit=ga.Operations.Get,qps,5,10
+        - --gce-ratelimit=alpha.Operations.Get,qps,5,10
+        - --gce-ratelimit=beta.Operations.Get,qps,5,10
         - --gce-ratelimit=ga.BackendServices.Get,qps,1.8,1
         - --gce-ratelimit=beta.BackendServices.Get,qps,1.8,1
         - --gce-ratelimit=ga.HealthChecks.Get,qps,1.8,1
         - --gce-ratelimit=alpha.HealthChecks.Get,qps,1.8,1
+        - --gce-ratelimit=alpha.NetworkEndpointGroups.Get,qps,1.8,1
+        - --gce-ratelimit=alpha.NetworkEndpointGroups.AttachNetworkEndpoints,qps,1.8,1
+        - --gce-ratelimit=alpha.NetworkEndpointGroups.DetachNetworkEndpoints,qps,1.8,1
+        - --gce-ratelimit=alpha.NetworkEndpointGroups.ListNetworkEndpoints,qps,1.8,1
         - --gce-ratelimit=beta.NetworkEndpointGroups.Get,qps,1.8,1
         - --gce-ratelimit=beta.NetworkEndpointGroups.AttachNetworkEndpoints,qps,1.8,1
         - --gce-ratelimit=beta.NetworkEndpointGroups.DetachNetworkEndpoints,qps,1.8,1
         - --gce-ratelimit=beta.NetworkEndpointGroups.ListNetworkEndpoints,qps,1.8,1
         - --gce-ratelimit=ga.NetworkEndpointGroups.Get,qps,1.8,1
-        - --gce-ratelimit=ga.NetworkEndpointGroups.AttachNetworkEndpoints,qps,1.8,1
-        - --gce-ratelimit=ga.NetworkEndpointGroups.DetachNetworkEndpoints,qps,1.8,1
-        - --gce-ratelimit=ga.NetworkEndpointGroups.ListNetworkEndpoints,qps,1.8,1
-        - --enable-asm-config-map-config=true
+        - --gce-ratelimit=ga.NetworkEndpointGroups.AttachNetworkEndpoints,qps,5,10
+        - --gce-ratelimit=ga.NetworkEndpointGroups.DetachNetworkEndpoints,qps,5,10
+        - --gce-ratelimit=ga.NetworkEndpointGroups.ListNetworkEndpoints,qps,10,15
+        - --enable-finalizer-add
+        - --enable-delete-unused-frontends
+        - --enable-v2-frontend-namer
+        - --enable-asm-config-map-config
+        - --enable-frontend-config
+        - --enable-backendconfig-healthcheck
+        - --run-ingress-controller=true
+        - --run-l4-controller=true
+        - --run-l4-netlb-controller=true
+        - --gke-cluster-name=slavik-ipv6-cluster
+        - --gke-cluster-type=zonal
+        - --num-ingress-workers=5
+        - --num-l4-workers=10
+        - --num-l4-net-workers=10
+        - --enable-psc
+        - --enable-endpoint-slices
+        - --enable-pinhole
+        - --run-l4-controller=true
+        - --run-l4-netlb-controller=true
+        - --enable-l4ilb-dual-stack=true
+        - --enable-l4netlb-dual-stack=true
       volumes:
       - name: gce-config-volume
         configMap:

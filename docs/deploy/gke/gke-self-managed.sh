@@ -128,17 +128,6 @@ function cleanup() {
   run_maybe_dry kubectl delete secret glbc-gcp-key -n kube-system
   run_maybe_dry kubectl delete -f ../resources/glbc.yaml.gen
   run_maybe_dry kubectl delete -f ../resources/default-http-backend.yaml.gen
-  # Ask if user wants to reenable GLBC on the GKE master.
-  while [[ $CONFIRM -eq 1 ]]; do
-    echo -e "${GREEN}Script-bot: Do you want to reenable GLBC on the GKE master?${NC}"
-    echo -e "${GREEN}Script-bot: Press [C | c] to continue.${NC}"
-    read input
-    case $input in
-      [Cc]* ) break;;
-      * ) echo -e "${GREEN}Script-bot: Press [C | c] to continue.${NC}"
-    esac
-  done
-  run_maybe_dry gcloud container clusters update ${CLUSTER_NAME} --zone=${ZONE} --update-addons=HttpLoadBalancing=ENABLED
   echo -e "${GREEN}Script-bot: Cleanup successful! You need to cleanup your GCP service account key manually.${NC}"
   exit 0
 }

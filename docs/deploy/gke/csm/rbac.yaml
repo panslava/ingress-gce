@@ -11,10 +11,44 @@ metadata:
   namespace: kube-system
   labels:
     addonmanager.kubernetes.io/mode: Reconcile
+
 rules:
 - apiGroups: [""]
-  resources: ["configmaps"]
+  resources: ["pods/status", "services/status", "services"]
+  verbs: ["*"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get"]
+- apiGroups: [""]
+  resources: ["events"]
   verbs: ["get", "list", "watch", "update", "create", "patch"]
+- apiGroups: [""]
+  resources: ["nodes", "namespaces", "endpoints", "pods"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["networking.gke.io"]
+  resources: ["managedcertificates", "frontendconfigs", "servicenetworkendpointgroups", "gcpingressparams", "serviceattachments"]
+  verbs: ["*"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["ingresses/status", "ingressclasses", "ingresses"]
+  verbs: ["*"]
+- apiGroups: ["discovery.k8s.io"]
+  resources: ["endpointslices"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["*"]
+- apiGroups: ["apiextensions.k8s.io"]
+  resources: ["customresourcedefinitions"]
+  verbs: ["get", "list", "watch", "update", "create", "patch"]
+- apiGroups: ["cloud.google.com"]
+  resources: ["backendconfigs"]
+  verbs: ["get", "list", "watch", "update", "create", "patch"]
+- apiGroups: ["networking.istio.io"]
+  resources: ["destinationrules"]
+  verbs: ["*"]
+- apiGroups: ["coordination.k8s.io"]
+  resources: ["leases"]
+  verbs: ["*"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -56,7 +90,7 @@ rules:
 - apiGroups: ["extensions", "networking.k8s.io"]
   resources: ["ingresses"]
   verbs: ["get", "list", "watch"]
-# For now, GLBC annotates ingress resources with various state and statuses: 
+# For now, GLBC annotates ingress resources with various state and statuses:
 # https://github.com/kubernetes/ingress-gce/blob/50d49b077d9ab4362a02fae05f94e433cd3f08dc/pkg/controller/controller.go#L579
 # TODO(rramkumar1): Remove unnecessary `update` permission once statuses are propagated through `ingresses/status`
 - apiGroups: ["extensions", "networking.k8s.io"]
