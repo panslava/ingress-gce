@@ -127,18 +127,7 @@ function cleanup() {
   run_maybe_dry gcloud iam service-accounts delete ${GCLOUD_EXTRA_FLAGS} glbc-service-account@${PROJECT_ID}.iam.gserviceaccount.com
   run_maybe_dry kubectl delete secret glbc-gcp-key -n kube-system
   run_maybe_dry kubectl delete -f ../resources/glbc.yaml.gen
-  run_maybe_dry kubectl delete -f ../resources/default-http-backend.yaml.gen
-  # Ask if user wants to reenable GLBC on the GKE master.
-  while [[ $CONFIRM -eq 1 ]]; do
-    echo -e "${GREEN}Script-bot: Do you want to reenable GLBC on the GKE master?${NC}"
-    echo -e "${GREEN}Script-bot: Press [C | c] to continue.${NC}"
-    read input
-    case $input in
-      [Cc]* ) break;;
-      * ) echo -e "${GREEN}Script-bot: Press [C | c] to continue.${NC}"
-    esac
-  done
-  run_maybe_dry gcloud container clusters update ${CLUSTER_NAME} --zone=${ZONE} --update-addons=HttpLoadBalancing=ENABLED
+  run_maybe_dry kubectl delete -f ../resources/default-http-backend.yaml
   echo -e "${GREEN}Script-bot: Cleanup successful! You need to cleanup your GCP service account key manually.${NC}"
   exit 0
 }
@@ -315,7 +304,8 @@ fi
 # And format the GLBC YAML with the image URL (either from --image-url or parsed from)
 # our Makefile output.
 sed "s|\[IMAGE_URL\]|$IMAGE_URL|" ../resources/glbc.yaml | \
-sed -e "s|\[ENABLE_CSM\]|$ENABLE_CSM|" > ../resources/glbc.yaml.gen
+sed -e "s|\[ENABLE_CSM\]|$ENABLE_CSM|" | \
+sed "s|\[CLUSTER_NAME\]|$CLUSTER_NAME|" > ../resources/glbc.yaml.gen
 
 # Grant permission to current GCP user to create new k8s ClusterRole's.
 run_maybe_dry_kubectl kubectl create clusterrolebinding one-binding-to-rule-them-all --clusterrole=cluster-admin --user=${GCP_USER}
@@ -425,10 +415,5 @@ then
   # Same idea as above, although this time we only need to prompt the user to start the glbc.
   error_exit: "Error_bot: Issue starting GLBC. ${PERMISSION_ISSUE}. We are so close to being done so just manually create glbc.yaml.gen when ready."
 fi
-
-# Do a final verification that the NodePort stayed the same for the
-# default-http-backend.
-NEW_NODE_PORT=`kubectl get svc default-http-backend -n kube-system -o yaml | grep "nodePort:" | cut -f2- -d:`
-[[ "$NEW_NODE_PORT" == "$NODE_PORT" ]] || error_exit "Error-bot: The NodePort for the new default-http-backend service is different than the original. Please recreate this service with NodePort: ${NODE_PORT} or traffic to this service will time out."
 
 echo -e "${GREEN}Script-bot: I'm done!${NC}"
