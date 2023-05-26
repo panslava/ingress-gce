@@ -1397,10 +1397,6 @@ func TestDualStackInternalLoadBalancerModifyProtocol(t *testing.T) {
 				if err != nil {
 					return false, err
 				}
-				// we don't reserve addresses for IPv6 forwarding rules
-				if fr.IpVersion == "IPV6" {
-					return false, nil
-				}
 
 				addr, err := l4.cloud.GetRegionAddressByIP(fr.Region, fr.IPAddress)
 				if utils.IgnoreHTTPNotFound(err) != nil {

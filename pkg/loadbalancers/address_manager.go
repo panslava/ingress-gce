@@ -20,10 +20,9 @@ import (
 	"fmt"
 	"net/http"
 
+	compute "google.golang.org/api/compute/v1"
 	"k8s.io/cloud-provider-gcp/providers/gce"
 	"k8s.io/ingress-gce/pkg/utils"
-
-	compute "google.golang.org/api/compute/v1"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	"k8s.io/klog/v2"
@@ -38,6 +37,18 @@ const (
 	IPAddrUnmanaged
 )
 
+// IPVersion represents compute.Address IpVersion field
+type IPVersion = string
+
+const (
+	IPv4Version IPVersion = "IPV4"
+	IPv6Version IPVersion = "IPV6"
+	// IPv6LBAddressPrefixLength used for reserving IPv6 addresses.
+	// Google Cloud reserves not a single IPv6 address, but a /96 range.
+	// At the moment, no other ranges are supported
+	IPv6LBAddressPrefixLength = 96
+)
+
 // Original file in https://github.com/kubernetes/legacy-cloud-providers/blob/6aa80146c33550e908aed072618bd7f9998837f6/gce/gce_address_manager.go
 type addressManager struct {
 	logPrefix   string
@@ -50,9 +61,10 @@ type addressManager struct {
 	subnetURL   string
 	tryRelease  bool
 	networkTier cloud.NetworkTier
+	ipVersion   IPVersion
 }
 
-func newAddressManager(svc gce.CloudAddressService, serviceName, region, subnetURL, name, targetIP string, addressType cloud.LbScheme, networkTier cloud.NetworkTier) *addressManager {
+func newAddressManager(svc gce.CloudAddressService, serviceName, region, subnetURL, name, targetIP string, addressType cloud.LbScheme, networkTier cloud.NetworkTier, ipVersion IPVersion) *addressManager {
 	return &addressManager{
 		svc:         svc,
 		logPrefix:   fmt.Sprintf("AddressManager(%q)", name),
@@ -64,6 +76,7 @@ func newAddressManager(svc gce.CloudAddressService, serviceName, region, subnetU
 		tryRelease:  true,
 		subnetURL:   subnetURL,
 		networkTier: networkTier,
+		ipVersion:   ipVersion,
 	}
 }
 
@@ -142,10 +155,14 @@ func (am *addressManager) ensureAddressReservation() (string, IPAddressType, err
 		Address:     am.targetIP,
 		AddressType: string(am.addressType),
 		Subnetwork:  am.subnetURL,
+		IpVersion:   am.ipVersion,
 	}
 	// NetworkTier is supported only for External IP Address
 	if am.addressType == cloud.SchemeExternal {
 		newAddr.NetworkTier = am.networkTier.ToGCEValue()
+	}
+	if am.ipVersion == IPv6Version && am.targetIP != "" {
+		newAddr.PrefixLength = IPv6LBAddressPrefixLength
 	}
 
 	reserveErr := am.svc.ReserveRegionAddress(newAddr, am.region)

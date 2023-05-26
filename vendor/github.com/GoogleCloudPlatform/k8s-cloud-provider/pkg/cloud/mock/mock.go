@@ -245,8 +245,15 @@ func convertAndInsertAlphaAddress(key *meta.Key, obj gceObject, mAddrs map[meta.
 	}
 
 	if addr.Address == "" {
-		addr.Address = fmt.Sprintf("1.2.3.%d", addressAttrs.IPCounter)
-		addressAttrs.IPCounter++
+		if addr.Address == "" {
+			if addr.IpVersion == "IPV6" {
+				addr.Address = fmt.Sprintf("1111:2222:3333:4444:5555:%d:0:0", addressAttrs.IPCounter)
+				addr.PrefixLength = 96
+			} else {
+				addr.Address = fmt.Sprintf("1.2.3.%d", addressAttrs.IPCounter)
+			}
+			addressAttrs.IPCounter++
+		}
 	}
 
 	// Set the default values for the Alpha fields.
