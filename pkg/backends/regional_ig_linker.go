@@ -15,6 +15,7 @@ package backends
 
 import (
 	"fmt"
+	"strings"
 
 	cloudprovider "github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
@@ -46,9 +47,11 @@ func (linker *RegionalInstanceGroupLinker) Link(sp utils.ServicePort, projectID 
 
 	var igLinks []string
 	for _, zone := range zones {
-		key := meta.ZonalKey(sp.IGName(), zone)
-		igSelfLink := cloudprovider.SelfLink(meta.VersionGA, projectID, "instanceGroups", key)
-		igLinks = append(igLinks, igSelfLink)
+		if strings.Contains(zone, "us-central1") {
+			key := meta.ZonalKey(sp.IGName(), zone)
+			igSelfLink := cloudprovider.SelfLink(meta.VersionGA, projectID, "instanceGroups", key)
+			igLinks = append(igLinks, igSelfLink)
+		}
 	}
 	// TODO(cheungdavid): Create regional ig linker logger that contains backendName,
 	// backendVersion, and backendScope before passing to backendPool.Get().

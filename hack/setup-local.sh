@@ -18,7 +18,7 @@ parseCluster() {
 parseInstance() {
     local name=$1
     # Globals.
-    nodeTag=$(gcloud compute instances describe ${name} --zone ${zone} --format='value(tags.items[0])')
+    nodeTag=$(gcloud compute instances describe ${name} --zone us-central1-f --format='value(tags.items[0])')
 }
 
 clusterName="$1"
@@ -49,7 +49,8 @@ fi
 # VM instances names created by gke are truncated up to 24 characters
 nodesPrefix=$(echo "gke-$clusterName" | head -c 24)
 # Get one instance from cluster's instance group 
-instance=$(gcloud  container  clusters describe $clusterName --zone $zone --format='value(instanceGroupUrls)' | awk -F"/" '{print $NF}' | xargs -I {} gcloud compute instance-groups list-instances {} --zone $zone | grep  RUNNING | awk '{print $1}' | tail -n 1)
+#instance=$(gcloud  container  clusters describe $clusterName --zone $zone --format='value(instanceGroupUrls)' | awk -F"/" '{print $NF}' | xargs -I {} gcloud compute instance-groups list-instances {} --zone $zone | grep  RUNNING | awk '{print $1}' | tail -n 1)
+instance="gke-prototype-test-default-pool-5b7b2d44-mtwt"
 
 if [ -z "${instance}" ]; then
   echo "ERROR: No running instances for cluster"
