@@ -53,6 +53,7 @@ import (
 	informeringparams "k8s.io/ingress-gce/pkg/ingparams/client/informers/externalversions/ingparams/v1beta1"
 	"k8s.io/ingress-gce/pkg/instancegroups"
 	"k8s.io/ingress-gce/pkg/metrics"
+	"k8s.io/ingress-gce/pkg/projectcloud/store"
 	serviceattachmentclient "k8s.io/ingress-gce/pkg/serviceattachment/client/clientset/versioned"
 	informerserviceattachment "k8s.io/ingress-gce/pkg/serviceattachment/client/informers/externalversions/serviceattachment/v1"
 	svcnegclient "k8s.io/ingress-gce/pkg/svcneg/client/clientset/versioned"
@@ -81,7 +82,8 @@ type ControllerContext struct {
 	EventRecorderClient kubernetes.Interface
 	NodeTopologyClient  nodetopologyclient.Interface
 
-	Cloud *gce.Cloud
+	DefaultCloud      *gce.Cloud
+	ProjectCloudStore *store.CloudStore
 
 	ClusterNamer  *namer.Namer
 	KubeSystemUID types.UID
@@ -188,7 +190,8 @@ func NewControllerContext(
 		SAClient:                saClient,
 		EventRecorderClient:     eventRecorderClient,
 		NodeTopologyClient:      nodeTopologyClient,
-		Cloud:                   cloud,
+		DefaultCloud:            cloud,
+		ProjectCloudStore:       store.NewCloudStore(),
 		ClusterNamer:            clusterNamer,
 		L4Namer:                 namer.NewL4Namer(string(kubeSystemUID), clusterNamer),
 		KubeSystemUID:           kubeSystemUID,
