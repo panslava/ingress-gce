@@ -503,7 +503,7 @@ func createNEGController(ctx *ingctx.ControllerContext, stopCh <-chan struct{}, 
 	// In NonGCP mode, use the zone specified in gce.conf directly.
 	// This overrides the zone/fault-domain label on nodes for NEG controller.
 	if flags.F.EnableNonGCPMode {
-		zoneGetter = zonegetter.NewNonGCPZoneGetter(ctx.Cloud.LocalZone())
+		zoneGetter = zonegetter.NewNonGCPZoneGetter(ctx.DefaultCloud.LocalZone())
 	}
 
 	enableAsm := false
@@ -524,12 +524,12 @@ func createNEGController(ctx *ingctx.ControllerContext, stopCh <-chan struct{}, 
 
 	// The following adapter will use Network Selflink as Network Url instead of the NetworkUrl itself.
 	// Network Selflink is always composed by the network name even if the cluster was initialized with Network Id.
-	// All the components created from it will be consistent and always use the Url with network name and not the url with netowork Id
-	adapter, err := network.NewAdapterNetworkSelfLink(ctx.Cloud)
+	// All the components created from it will be consistfent and always use the Url with network name and not the url with netowork Id
+	adapter, err := network.NewAdapterNetworkSelfLink(ctx.DefaultCloud)
 	if err != nil {
 		logger.Error(err, "Failed to create network adapter with SelfLink")
 		// if it was not possible to retrieve network information use standard context as cloud network provider
-		adapter = ctx.Cloud
+		adapter = ctx.DefaultCloud
 	}
 
 	// TODO: Refactor NEG to use cloud mocks so ctx.Cloud can be referenced within NewController.

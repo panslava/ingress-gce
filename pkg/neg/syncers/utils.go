@@ -295,7 +295,7 @@ func toZoneNetworkEndpointMap(eds []negtypes.EndpointsData, zoneGetter *zonegett
 				return ZoneNetworkEndpointMapResult{}, fmt.Errorf("unexpected error when getting zone for endpoint %q in endpoint slice %s/%s: %w", endpointAddress.Addresses, ed.Meta.Namespace, ed.Meta.Name, getZoneErr)
 			}
 
-			_, _, getPodErr := getEndpointPod(endpointAddress, podLister)
+			pod, _, getPodErr := getEndpointPod(endpointAddress, podLister)
 			if getPodErr != nil {
 				metrics.PublishNegControllerErrorCountMetrics(getPodErr, true)
 				if flags.F.EnableDegradedMode {
@@ -336,7 +336,13 @@ func toZoneNetworkEndpointMap(eds []negtypes.EndpointsData, zoneGetter *zonegett
 					continue // if existing name is alphabetically lower than current one, continue and don't replace
 				}
 			}
-			networkEndpointPodMap[networkEndpoint] = types.NamespacedName{Namespace: endpointAddress.TargetRef.Namespace, Name: endpointAddress.TargetRef.Name}
+			networkEndpointPodMap[networkEndpoint] = negtypes.PodInfo{
+				NamespacedName: types.NamespacedName{
+					Namespace: endpointAddress.TargetRef.Namespace,
+					Name:      endpointAddress.TargetRef.Name,
+				},
+				Project: nil, //
+			}
 		}
 		mergeWithGlobalCounts(localEPCount, globalEPCount, globalEPSCount)
 	}

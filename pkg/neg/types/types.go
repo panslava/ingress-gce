@@ -30,6 +30,7 @@ import (
 	"k8s.io/ingress-gce/pkg/annotations"
 	"k8s.io/ingress-gce/pkg/flags"
 	"k8s.io/ingress-gce/pkg/network"
+	"k8s.io/ingress-gce/pkg/projectcloud/crd"
 	"k8s.io/ingress-gce/pkg/utils/namer"
 	"k8s.io/ingress-gce/pkg/utils/zonegetter"
 )
@@ -308,8 +309,13 @@ func (key NegSyncerKey) GetAPIVersion() meta.Version {
 	}
 }
 
+type PodInfo struct {
+	types.NamespacedName
+	Project *crd.Project
+}
+
 // EndpointPodMap is a map from network endpoint to a namespaced name of a pod
-type EndpointPodMap map[NetworkEndpoint]types.NamespacedName
+type EndpointPodMap map[NetworkEndpoint]PodInfo
 
 // Abstraction over Endpoints and EndpointSlices.
 // It contains all the information needed to set up
