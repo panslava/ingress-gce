@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"time"
@@ -8,8 +9,9 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/ingress-gce/pkg/context"
+	ingresscontext "k8s.io/ingress-gce/pkg/context"
 	"k8s.io/ingress-gce/pkg/projectcloud/crd"
+	"k8s.io/ingress-gce/pkg/projectcloud/manager"
 	"k8s.io/ingress-gce/pkg/utils"
 	"k8s.io/klog/v2"
 )
@@ -20,6 +22,8 @@ const (
 )
 
 type ProjectController struct {
+	manager *manager.ProjectControllerManager
+
 	client        kubernetes.Interface
 	projectLister cache.Indexer
 	projectQueue  utils.TaskQueue
@@ -30,7 +34,7 @@ type ProjectController struct {
 }
 
 // NewProjectController creates a new instance of the Project controller.
-func NewProjectController(ctx *context.ControllerContext, informer cache.SharedIndexInformer, stopCh <-chan struct{}, logger klog.Logger) *ProjectController {
+func NewProjectController(ctx *ingresscontext.ControllerContext, informer cache.SharedIndexInformer, stopCh <-chan struct{}, logger klog.Logger) *ProjectController {
 	logger = logger.WithName(projectControllerName)
 	pc := &ProjectController{
 		client:        ctx.KubeClient,
@@ -39,15 +43,29 @@ func NewProjectController(ctx *context.ControllerContext, informer cache.SharedI
 		numWorkers:    workersNum,
 		logger:        logger,
 		hasSynced:     ctx.HasSynced,
+		manager:       manager.NewProjectControllerManager(ctx.KubeClient, logger),
 	}
 
 	pc.projectQueue = utils.NewPeriodicTaskQueueWithMultipleWorkers(projectControllerName, "projects", pc.numWorkers, pc.syncWrapper, logger)
 
 	informer.AddEventHandler(
 		cache.ResourceEventHandlerFuncs{
-			AddFunc:    pc.enqueueProject,
-			UpdateFunc: func(old, cur interface{}) { pc.enqueueProject(cur) },
-			DeleteFunc: pc.handleProjectDeletion,
+			AddFunc: func(obj interface{}) { pc.projectQueue.Enqueue(obj) },
+			UpdateFunc: func(old, cur interface{}) {
+				oldProj, ok := old.(*crd.Project)
+				if !ok {
+					pc.logger.Error(fmt.Errorf("unexpected type for project, expected *Project but got %T", old), "Type assertion failed")
+					return
+				}
+				curProj, ok := cur.(*crd.Project)
+				if !ok {
+					pc.logger.Error(fmt.Errorf("unexpected type for project, expected *Project but got %T", cur), "Type assertion failed")
+					return
+				}
+				if needsUpdate(oldProj, curProj) {
+					pc.projectQueue.Enqueue(cur)
+				}
+			},
 		})
 
 	return pc
@@ -56,32 +74,20 @@ func NewProjectController(ctx *context.ControllerContext, informer cache.SharedI
 func (pc *ProjectController) Run() {
 	defer pc.shutdown()
 
-	wait.PollUntil(5*time.Second, func() (bool, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-pc.stopCh
+		cancel()
+	}()
+
+	wait.PollUntilContextCancel(ctx, 5*time.Second, false, func(ctx context.Context) (bool, error) {
 		pc.logger.V(2).Info("Waiting for initial cache sync before starting Project Controller")
 		return pc.hasSynced(), nil
-	}, pc.stopCh)
+	})
 
 	pc.logger.Info("Running Project Controller", "numWorkers", pc.numWorkers)
 	pc.projectQueue.Run()
 	<-pc.stopCh
-}
-
-func (pc *ProjectController) enqueueProject(obj interface{}) {
-	key, err := cache.MetaNamespaceKeyFunc(obj)
-	if err != nil {
-		pc.logger.Error(err, "Failed to get key for project", "obj", obj)
-		return
-	}
-	pc.projectQueue.Enqueue(key)
-}
-
-func (pc *ProjectController) handleProjectDeletion(obj interface{}) {
-	key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
-	if err != nil {
-		pc.logger.Error(err, "Failed to get key for deleted project", "obj", obj)
-		return
-	}
-	pc.projectQueue.Enqueue(key)
 }
 
 func (pc *ProjectController) shutdown() {
@@ -98,7 +104,11 @@ func (pc *ProjectController) syncWrapper(key string) error {
 			svcLogger.Error(fmt.Errorf("panic in Project sync worker goroutine: %v", r), "Recovered from panic")
 		}
 	}()
-	return pc.sync(key, svcLogger)
+	err := pc.sync(key, svcLogger)
+	if err != nil {
+		svcLogger.Error(err, "Error syncing project", "key", key)
+	}
+	return err
 }
 
 func (pc *ProjectController) sync(key string, logger klog.Logger) error {
@@ -112,46 +122,40 @@ func (pc *ProjectController) sync(key string, logger klog.Logger) error {
 		logger.V(3).Info("Project does not exist anymore")
 		return nil
 	}
-
-	// Ensure the project is of the correct type
 	proj, ok := project.(*crd.Project)
 	if !ok {
-		err := fmt.Errorf("unexpected type for project, expected *Project but got %T", project)
-		logger.Error(err, "Type assertion failed", "key", key)
-		return err
+		return fmt.Errorf("unexpected type for project, expected *Project but got %T", project)
 	}
+
 	if proj.DeletionTimestamp != nil {
-		logger.V(3).Info("Project is being deleted, deleting cloud")
-		pc.gceClouds.DeleteCloudForProject(proj)
+		logger.Info("Project is being deleted, stopping controllers", "project", proj)
+
+		err = pc.manager.StopControllersForProject(proj)
+		if err != nil {
+			return fmt.Errorf("failed to stop controllers for project %v: %w", proj, err)
+		}
+
 		return nil
 	}
 
-	cloud, err := pc.gceClouds.CloudForProject(proj)
+	logger.V(2).Info("Syncing project", "project", proj)
+
+	// Restart controllers for the project.
+	err = pc.manager.StopControllersForProject(proj)
 	if err != nil {
-		logger.Error(err, "Failed to get cloud for project")
-		return err
+		return fmt.Errorf("failed to stop controllers for project %v: %w", proj, err)
 	}
-	if cloud != nil {
-		logger.V(2).Info("Project already has cloud created, skipping", "projectId", proj.ProjectID)
-		return nil
-	}
-
-	logger.V(2).Info("Creating cloud for project", "projectId", proj.ProjectID)
-
-	cloud, err = NewCloudFromProject(proj)
+	err = pc.manager.StartControllersForProject(proj)
 	if err != nil {
-		logger.Error(err, "Failed to create GCE cloud for project", "key", key)
-		return err
+		return fmt.Errorf("failed to start controllers for project %v: %w", proj, err)
 	}
 
-	pc.gceClouds.StoreCloudForProject(proj, cloud)
+	logger.V(2).Info("Successfully synced project", "project", proj)
 	return nil
 }
 
-// NewCloudFromProject mocks functionality to create new cloud for Project.
-func NewCloudFromProject(proj *crd.Project) (*gce.Cloud, error) {
-	if proj == nil || proj.ProjectID == "" {
-		return nil, fmt.Errorf("ProjectID is required to create a GCE cloud")
-	}
-	return &gce.Cloud{}, nil
+// needsUpdate determines if the project needs to be updated.
+func needsUpdate(old, new *crd.Project) bool {
+	// TODO: Implement this
+	return true
 }
