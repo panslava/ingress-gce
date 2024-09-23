@@ -1,7 +1,6 @@
 package namespaced
 
 import (
-	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -12,16 +11,7 @@ type store struct {
 }
 
 func (n *store) List() []interface{} {
-	items := n.Store.List()
-	var filtered []interface{}
-	for _, item := range items {
-		if metaObj, err := meta.Accessor(item); err == nil {
-			if metaObj.GetNamespace() == n.namespace {
-				filtered = append(filtered, item)
-			}
-		}
-	}
-	return filtered
+	return namespaceFilteredList(n.Store.List(), n.namespace)
 }
 
 func (n *store) ListKeys() []string {
@@ -29,10 +19,8 @@ func (n *store) ListKeys() []string {
 	var keys []string
 	for _, item := range items {
 		if key, err := cache.MetaNamespaceKeyFunc(item); err == nil {
-			if metaObj, err := meta.Accessor(item); err == nil {
-				if metaObj.GetNamespace() == n.namespace {
-					keys = append(keys, key)
-				}
+			if isObjectInNamespace(item, n.namespace) {
+				keys = append(keys, key)
 			}
 		}
 	}
@@ -52,10 +40,8 @@ func (n *store) GetByKey(key string) (item interface{}, exists bool, err error) 
 	if !exists || err != nil {
 		return nil, exists, err
 	}
-	if metaObj, err := meta.Accessor(item); err == nil {
-		if metaObj.GetNamespace() == n.namespace {
-			return item, true, nil
-		}
+	if isObjectInNamespace(item, n.namespace) {
+		return item, true, nil
 	}
 	return nil, false, nil
 }

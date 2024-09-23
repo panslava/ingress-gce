@@ -10,8 +10,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	ingresscontext "k8s.io/ingress-gce/pkg/context"
-	"k8s.io/ingress-gce/pkg/projectcloud/crd"
-	"k8s.io/ingress-gce/pkg/projectcloud/manager"
+	"k8s.io/ingress-gce/pkg/multiproject/crd"
+	"k8s.io/ingress-gce/pkg/multiproject/manager"
 	"k8s.io/ingress-gce/pkg/utils"
 	"k8s.io/klog/v2"
 )

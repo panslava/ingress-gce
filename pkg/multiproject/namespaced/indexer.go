@@ -1,7 +1,6 @@
 package namespaced
 
 import (
-	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -12,7 +11,7 @@ type indexer struct {
 }
 
 func (n *indexer) List() []interface{} {
-	return n.namespaceFilteredList(n.Indexer.List())
+	return namespaceFilteredList(n.Indexer.List(), n.namespace)
 }
 
 func (n *indexer) ByIndex(indexName, indexKey string) ([]interface{}, error) {
@@ -20,7 +19,7 @@ func (n *indexer) ByIndex(indexName, indexKey string) ([]interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	return n.namespaceFilteredList(items), nil
+	return namespaceFilteredList(items, n.namespace), nil
 }
 
 func (n *indexer) Index(indexName string, obj interface{}) ([]interface{}, error) {
@@ -28,16 +27,15 @@ func (n *indexer) Index(indexName string, obj interface{}) ([]interface{}, error
 	if err != nil {
 		return nil, err
 	}
-	return n.namespaceFilteredList(items), nil
+	return namespaceFilteredList(items, n.namespace), nil
 }
 
-func (n *indexer) namespaceFilteredList(items []interface{}) []interface{} {
+// namespaceFilteredList filters a list of objects by namespace.
+func namespaceFilteredList(items []interface{}, namespace string) []interface{} {
 	var filtered []interface{}
 	for _, item := range items {
-		if metaObj, err := meta.Accessor(item); err == nil {
-			if metaObj.GetNamespace() == n.namespace {
-				filtered = append(filtered, item)
-			}
+		if isObjectInNamespace(item, namespace) {
+			filtered = append(filtered, item)
 		}
 	}
 	return filtered

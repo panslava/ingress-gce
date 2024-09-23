@@ -44,11 +44,7 @@ func (i *Informer) AddEventHandlerWithResyncPeriod(handler cache.ResourceEventHa
 
 // namespaceFilter filters objects based on the namespace.
 func (i *Informer) namespaceFilter(obj interface{}) bool {
-	metaObj, err := meta.Accessor(obj)
-	if err != nil {
-		return false
-	}
-	return metaObj.GetNamespace() == i.namespace
+	return isObjectInNamespace(obj, i.namespace)
 }
 
 func (i *Informer) GetStore() cache.Store {
@@ -63,4 +59,13 @@ func (i *Informer) GetIndexer() cache.Indexer {
 		Indexer:   i.SharedIndexInformer.GetIndexer(),
 		namespace: i.namespace,
 	}
+}
+
+// isObjectInNamespace is a helper function to filter objects by namespace.
+func isObjectInNamespace(obj interface{}, namespace string) bool {
+	metaObj, err := meta.Accessor(obj)
+	if err != nil {
+		return false
+	}
+	return metaObj.GetNamespace() == namespace
 }
