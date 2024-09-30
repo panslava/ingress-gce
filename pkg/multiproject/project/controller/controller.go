@@ -7,11 +7,9 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
-	ingresscontext "k8s.io/ingress-gce/pkg/context"
-	"k8s.io/ingress-gce/pkg/multiproject/crd"
 	"k8s.io/ingress-gce/pkg/multiproject/manager"
+	"k8s.io/ingress-gce/pkg/multiproject/project/crd"
 	"k8s.io/ingress-gce/pkg/utils"
 	"k8s.io/klog/v2"
 )
@@ -24,7 +22,6 @@ const (
 type ProjectController struct {
 	manager *manager.ProjectControllerManager
 
-	client        kubernetes.Interface
 	projectLister cache.Indexer
 	projectQueue  utils.TaskQueue
 	numWorkers    int
@@ -34,21 +31,20 @@ type ProjectController struct {
 }
 
 // NewProjectController creates a new instance of the Project controller.
-func NewProjectController(ctx *ingresscontext.ControllerContext, informer cache.SharedIndexInformer, stopCh <-chan struct{}, logger klog.Logger) *ProjectController {
+func NewProjectController(manager *manager.ProjectControllerManager, projectInformer cache.SharedIndexInformer, stopCh <-chan struct{}, logger klog.Logger) *ProjectController {
 	logger = logger.WithName(projectControllerName)
 	pc := &ProjectController{
-		client:        ctx.KubeClient,
-		projectLister: informer.GetIndexer(),
+		projectLister: projectInformer.GetIndexer(),
 		stopCh:        stopCh,
 		numWorkers:    workersNum,
 		logger:        logger,
-		hasSynced:     ctx.HasSynced,
-		manager:       manager.NewProjectControllerManager(ctx.KubeClient, logger),
+		hasSynced:     projectInformer.HasSynced,
+		manager:       manager,
 	}
 
 	pc.projectQueue = utils.NewPeriodicTaskQueueWithMultipleWorkers(projectControllerName, "projects", pc.numWorkers, pc.syncWrapper, logger)
 
-	informer.AddEventHandler(
+	projectInformer.AddEventHandler(
 		cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) { pc.projectQueue.Enqueue(obj) },
 			UpdateFunc: func(old, cur interface{}) {

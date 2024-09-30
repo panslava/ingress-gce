@@ -8,8 +8,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 	ingctx "k8s.io/ingress-gce/pkg/context"
 	"k8s.io/ingress-gce/pkg/flags"
-	"k8s.io/ingress-gce/pkg/multiproject/crd"
 	"k8s.io/ingress-gce/pkg/multiproject/gce"
+	"k8s.io/ingress-gce/pkg/multiproject/project/crd"
 	"k8s.io/ingress-gce/pkg/utils"
 	"k8s.io/klog/v2"
 )

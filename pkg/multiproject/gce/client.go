@@ -2,7 +2,7 @@ package gce
 
 import (
 	"k8s.io/cloud-provider-gcp/providers/gce"
-	"k8s.io/ingress-gce/pkg/multiproject/crd"
+	"k8s.io/ingress-gce/pkg/multiproject/project/crd"
 	"k8s.io/klog/v2"
 )
 
