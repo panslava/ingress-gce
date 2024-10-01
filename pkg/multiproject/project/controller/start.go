@@ -24,9 +24,6 @@ func StartMultiProjectController(ctx *ingresscontext.ControllerContext, stopCh <
 func NewControllerContext(
 	kubeClient kubernetes.Interface,
 	svcnegClient svcnegclient.Interface,
-	ingParamsClient ingparamsclient.Interface,
-	saClient serviceattachmentclient.Interface,
-	networkClient networkclient.Interface,
 	nodeTopologyClient nodetopologyclient.Interface,
 	eventRecorderClient kubernetes.Interface,
 	cloud *gce.Cloud,
@@ -51,7 +48,6 @@ func NewControllerContext(
 		KubeClient:              kubeClient,
 		FirewallClient:          firewallClient,
 		SvcNegClient:            svcnegClient,
-		SAClient:                saClient,
 		EventRecorderClient:     eventRecorderClient,
 		NodeTopologyClient:      nodeTopologyClient,
 		Cloud:                   cloud,
@@ -73,25 +69,10 @@ func NewControllerContext(
 	if firewallClient != nil {
 		context.FirewallInformer = informerfirewall.NewGCPFirewallInformer(firewallClient, config.ResyncPeriod, utils.NewNamespaceIndexer())
 	}
-	if config.FrontendConfigEnabled {
-		context.FrontendConfigInformer = informerfrontendconfig.NewFrontendConfigInformer(frontendConfigClient, config.Namespace, config.ResyncPeriod, utils.NewNamespaceIndexer())
-	}
-	if ingParamsClient != nil {
-		context.IngClassInformer = informernetworking.NewIngressClassInformer(kubeClient, config.ResyncPeriod, utils.NewNamespaceIndexer())
-		context.IngParamsInformer = informeringparams.NewGCPIngressParamsInformer(ingParamsClient, config.ResyncPeriod, utils.NewNamespaceIndexer())
-	}
-
-	if saClient != nil {
-		context.SAInformer = informerserviceattachment.NewServiceAttachmentInformer(saClient, config.Namespace, config.ResyncPeriod, utils.NewNamespaceIndexer())
-	}
 
 	if networkClient != nil {
 		context.NetworkInformer = informernetwork.NewNetworkInformer(networkClient, config.ResyncPeriod, utils.NewNamespaceIndexer())
 		context.GKENetworkParamsInformer = informernetwork.NewGKENetworkParamSetInformer(networkClient, config.ResyncPeriod, utils.NewNamespaceIndexer())
-	}
-
-	if flags.F.GKEClusterType == ClusterTypeRegional {
-		context.RegionalCluster = true
 	}
 
 	if flags.F.EnableMultiSubnetClusterPhase1 {
