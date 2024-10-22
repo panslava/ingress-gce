@@ -49,5 +49,13 @@ LD_FLAGS="-X ${PKG}/pkg/version.Version=${VERSION} -X ${PKG}/pkg/version.GitComm
 if echo "${TARGET}" | grep '.*-test$'; then
   go test -c -ldflags "${LD_FLAGS}" -o "${TARGET}" "${BIN_PKG}"
 else
-  go install -installsuffix "static" -ldflags "${LD_FLAGS}" "${BIN_PKG}"
+#   echo "Building ${TARGET} with ldflags ${LD_FLAGS}"
+#   pwd
+#   ls -la
+#   git status
+#   which go
+#   go version
+#   echo "GOBIN: ${GOBIN}"
+  go build -o "${GOBIN}/$(basename ${TARGET})" -installsuffix "static" -ldflags "${LD_FLAGS}" "${BIN_PKG}"
+#   echo "Built ${TARGET} with ldflags ${LD_FLAGS}"
 fi
