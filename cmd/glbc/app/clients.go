@@ -102,6 +102,10 @@ func NewGCEClient(logger klog.Logger) *gce.Cloud {
 		configReader = func() io.Reader { return nil }
 	}
 
+	return GCEClientForConfigReader(configReader, logger)
+}
+
+func GCEClientForConfigReader(configReader func() io.Reader, logger klog.Logger) *gce.Cloud {
 	// Creating the cloud interface involves resolving the metadata server to get
 	// an oauth token. If this fails, the token provider assumes it's not on GCE.
 	// No errors are thrown. So we need to keep retrying till it works because

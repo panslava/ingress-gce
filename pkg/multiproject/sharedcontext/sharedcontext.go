@@ -8,9 +8,11 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/cloud-provider-gcp/providers/gce"
 	ingresscontext "k8s.io/ingress-gce/pkg/context"
 	"k8s.io/ingress-gce/pkg/flags"
 	_ "k8s.io/ingress-gce/pkg/klog"
+	multiprojectgce "k8s.io/ingress-gce/pkg/multiproject/gce"
 	"k8s.io/ingress-gce/pkg/neg/syncers/labels"
 	svcnegclient "k8s.io/ingress-gce/pkg/svcneg/client/clientset/versioned"
 	"k8s.io/ingress-gce/pkg/utils/namer"
@@ -18,6 +20,7 @@ import (
 )
 
 type SharedContext struct {
+	DefaultCloudConfigFile  *gce.ConfigFile
 	KubeClient              kubernetes.Interface
 	KubeSystemUID           types.UID
 	EventRecorderClient     kubernetes.Interface
@@ -56,6 +59,7 @@ func NewSharedContext(
 	}
 
 	context := &SharedContext{
+		DefaultCloudConfigFile:  multiprojectgce.DefaultGCEConfigFile(logger),
 		KubeClient:              kubeClient,
 		KubeSystemUID:           kubeSystemUID,
 		EventRecorderClient:     eventRecorderClient,
