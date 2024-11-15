@@ -19,6 +19,22 @@ func (p *Project) ProjectName() string {
 	return p.ObjectMeta.Labels[flags.F.MultiProjectCRDProjectNameLabel]
 }
 
+func (p *Project) ProjectID() string {
+	return p.Spec.ProjectID
+}
+
+func (p *Project) ProjectNumber() int64 {
+	return p.Spec.ProjectNumber
+}
+
+func (p *Project) NetworkURL() string {
+	return p.Spec.NetworkConfig.Network
+}
+
+func (p *Project) SubnetworkURL() string {
+	return p.Spec.NetworkConfig.DefaultSubnetwork
+}
+
 // ProjectList contains a list of Projects.
 type ProjectList struct {
 	metav1.TypeMeta
@@ -28,9 +44,11 @@ type ProjectList struct {
 
 // ProjectSpec specifies the desired state of the project in the MT cluster.
 type ProjectSpec struct {
-	// GCP project number where the project is to be created.
+	// ProjectNumber is the GCP project number where the project exists.
 	ProjectNumber int64
-	// Network configuration for the project.
+	// ProjectID is the GCP project ID where the project exists.
+	ProjectID string
+	// NetworkConfig specifies the network configuration for the project.
 	NetworkConfig NetworkConfig
 }
 
