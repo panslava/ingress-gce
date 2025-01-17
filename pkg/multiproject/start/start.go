@@ -93,7 +93,7 @@ func makeLeaderElectionConfig(
 		RetryPeriod:   flags.F.LeaderElection.RetryPeriod.Duration,
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(context.Context) {
-				start(kubeConfig, logger, kubeClient, svcNegClient, kubeSystemUID, eventRecorderKubeClient, rootNamer, stopCh)
+				Start(kubeConfig, logger, kubeClient, svcNegClient, kubeSystemUID, eventRecorderKubeClient, rootNamer, stopCh)
 			},
 			OnStoppedLeading: func() {
 				logger.Info("Stop running multi-project leader election")
@@ -102,7 +102,7 @@ func makeLeaderElectionConfig(
 	}, nil
 }
 
-func start(
+func Start(
 	kubeConfig *rest.Config,
 	logger klog.Logger,
 	kubeClient kubernetes.Interface,
