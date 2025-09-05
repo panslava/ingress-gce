@@ -399,7 +399,8 @@ func main() {
 			if err != nil {
 				klog.Fatalf("makeNEGLeaderElectionConfig()=%v, want nil", err)
 			}
-			leaderelection.RunOrDie(context.Background(), *negRunner)
+			// Bind leader election to process stopCh so we release lock and stop promptly.
+			leaderelection.RunOrDie(leaderElectionContext(rOption.stopCh), *negRunner)
 			logger.Info("NEG Controller exited.")
 		}
 		runIngress = func() {
@@ -415,7 +416,8 @@ func main() {
 			if err != nil {
 				klog.Fatalf("makeLeaderElectionConfig()=%v, want nil", err)
 			}
-			leaderelection.RunOrDie(context.Background(), *ingressRunner)
+			// Bind leader election to process stopCh so we release lock and stop promptly.
+			leaderelection.RunOrDie(leaderElectionContext(rOption.stopCh), *ingressRunner)
 		}
 	}
 
@@ -511,10 +513,11 @@ func makeRunnerWithLeaderElection(
 	}
 
 	return &leaderelection.LeaderElectionConfig{
-		Lock:          rl,
-		LeaseDuration: flags.F.LeaderElection.LeaseDuration.Duration,
-		RenewDeadline: flags.F.LeaderElection.RenewDeadline.Duration,
-		RetryPeriod:   flags.F.LeaderElection.RetryPeriod.Duration,
+		Lock:            rl,
+		LeaseDuration:   flags.F.LeaderElection.LeaseDuration.Duration,
+		RenewDeadline:   flags.F.LeaderElection.RenewDeadline.Duration,
+		RetryPeriod:     flags.F.LeaderElection.RetryPeriod.Duration,
+		ReleaseOnCancel: true,
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: onStartedLeading,
 			OnStoppedLeading: onStoppedLeading,
@@ -545,56 +548,19 @@ func runControllers(ctx *ingctx.ControllerContext, systemHealth *systemhealth.Sy
 	ctx.Start(option.stopCh)
 }
 
-func runL4Controllers(ctx *ingctx.ControllerContext, systemHealth *systemhealth.SystemHealth, option runOption, leOption leaderElectionOption, logger klog.Logger) {
+func runL4Controllers(ctx *ingctx.ControllerContext, systemHealth *systemhealth.SystemHealth, runOpts runOption, leOption leaderElectionOption, logger klog.Logger) {
 	if !flags.F.RunL4Controller && !flags.F.EnablePSC && !flags.F.EnableIGController && !flags.F.RunL4NetLBController {
 		return
 	}
-	run := func() {
-		if flags.F.RunL4Controller {
-			l4Controller := l4lb.NewILBController(ctx, option.stopCh, logger)
-			systemHealth.AddHealthCheck(l4lb.L4ILBControllerName, l4Controller.SystemHealth)
-			runWithWg(l4Controller.Run, option.wg)
-			logger.V(0).Info("L4 controller started")
-		}
-
-		if flags.F.EnablePSC {
-			pscController := psc.NewController(ctx, option.stopCh, logger)
-			runWithWg(pscController.Run, option.wg)
-			logger.V(0).Info("PSC Controller started")
-		}
-
-		if flags.F.EnableIGController {
-			igControllerParams := &instancegroups.ControllerConfig{
-				NodeInformer:             ctx.NodeInformer,
-				ZoneGetter:               ctx.ZoneGetter,
-				IGManager:                ctx.InstancePool,
-				HasSynced:                ctx.HasSynced,
-				EnableMultiSubnetCluster: flags.F.EnableIGMultiSubnetCluster,
-				ReadOnlyMode:             flags.F.ReadOnlyMode,
-				StopCh:                   option.stopCh,
-			}
-			igController := instancegroups.NewController(igControllerParams, logger)
-			runWithWg(igController.Run, option.wg)
-		}
-
-		// The L4NetLbController will be run when RbsMode flag is Set
-		if flags.F.RunL4NetLBController {
-			l4netlbController := l4lb.NewL4NetLBController(ctx, option.stopCh, logger)
-			systemHealth.AddHealthCheck(l4lb.L4NetLBControllerName, l4netlbController.SystemHealth)
-
-			runWithWg(l4netlbController.Run, option.wg)
-			logger.V(0).Info("L4NetLB controller started")
-		}
-	}
 	if !flags.F.LeaderElection.LeaderElect || !flags.F.GateL4ByLock {
-		run()
+		startL4Controllers(ctx, systemHealth, runOpts, logger)
 		return
 	}
 	lockLogger := logger.WithValues("lock", l4LockName)
-	runner, err := makeRunnerWithLeaderElection(leOption, l4LockName, func(ctx context.Context) {
+	runner, err := makeRunnerWithLeaderElection(leOption, l4LockName, func(lecCtx context.Context) {
 		lockLogger.V(0).Info("Acquired L4 Leader election lock")
-		go collectLockAvailabilityMetrics(l4LockName, flags.F.GKEClusterType, option.stopCh, lockLogger)
-		run()
+		go collectLockAvailabilityMetrics(l4LockName, flags.F.GKEClusterType, runOpts.stopCh, lockLogger)
+		startL4Controllers(ctx, systemHealth, runOpts, logger)
 	}, func() {
 		lockLogger.V(0).Info("Stop running L4 Leader election")
 	})
@@ -604,21 +570,61 @@ func runL4Controllers(ctx *ingctx.ControllerContext, systemHealth *systemhealth.
 	// run in a separate goroutine to not block further operation if lock can't be acquired.
 	go func() {
 		lockLogger.V(0).Info("Attempt to acquire L4 Leader election lock")
-		leaderelection.RunOrDie(context.Background(), *runner)
+		leaderelection.RunOrDie(leaderElectionContext(runOpts.stopCh), *runner)
 	}()
+}
+
+// startL4Controllers starts the enabled L4-related controllers using the provided
+// run options.
+func startL4Controllers(ctx *ingctx.ControllerContext, systemHealth *systemhealth.SystemHealth, opts runOption, logger klog.Logger) {
+	if flags.F.RunL4Controller {
+		l4Controller := l4lb.NewILBController(ctx, opts.stopCh, logger)
+		systemHealth.AddHealthCheck(l4lb.L4ILBControllerName, l4Controller.SystemHealth)
+		runWithWg(l4Controller.Run, opts.wg)
+		logger.V(0).Info("L4 controller started")
+	}
+
+	if flags.F.EnablePSC {
+		pscController := psc.NewController(ctx, opts.stopCh, logger)
+		runWithWg(pscController.Run, opts.wg)
+		logger.V(0).Info("PSC Controller started")
+	}
+
+	if flags.F.EnableIGController {
+		igControllerParams := &instancegroups.ControllerConfig{
+			NodeInformer:             ctx.NodeInformer,
+			ZoneGetter:               ctx.ZoneGetter,
+			IGManager:                ctx.InstancePool,
+			HasSynced:                ctx.HasSynced,
+			EnableMultiSubnetCluster: flags.F.EnableIGMultiSubnetCluster,
+			ReadOnlyMode:             flags.F.ReadOnlyMode,
+			StopCh:                   opts.stopCh,
+		}
+		igController := instancegroups.NewController(igControllerParams, logger)
+		runWithWg(igController.Run, opts.wg)
+	}
+
+	// The L4NetLbController will be run when RbsMode flag is Set
+	if flags.F.RunL4NetLBController {
+		l4netlbController := l4lb.NewL4NetLBController(ctx, opts.stopCh, logger)
+		systemHealth.AddHealthCheck(l4lb.L4NetLBControllerName, l4netlbController.SystemHealth)
+
+		runWithWg(l4netlbController.Run, opts.wg)
+		logger.V(0).Info("L4NetLB controller started")
+	}
 }
 
 func runNEGController(ctx *ingctx.ControllerContext, systemHealth *systemhealth.SystemHealth, option runOption, logger klog.Logger) error {
 	lockLogger := logger.WithValues("lockName", negLockName)
-	lockLogger.Info("Attempting to grab lock", "lockName", negLockName)
-	go collectLockAvailabilityMetrics(negLockName, flags.F.GKEClusterType, option.stopCh, logger)
+	lockLogger.Info("Attempting to grab lock")
+	go collectLockAvailabilityMetrics(negLockName, flags.F.GKEClusterType, option.stopCh, lockLogger)
 
 	if flags.F.EnableNEGController {
 		negController, err := createNEGController(ctx, systemHealth, option.stopCh, logger)
 		if err != nil {
 			return fmt.Errorf("failed to create NEG controller: %w", err)
 		}
-		go runWithWg(negController.Run, option.wg)
+		runWithWg(negController.Run, option.wg)
 		logger.V(0).Info("negController started")
 	}
 
@@ -748,4 +754,16 @@ func waitWithTimeout(wg *sync.WaitGroup, logger klog.Logger) {
 		logger.Info("Reached 30 seconds timeout limit for cleanup, shutting down")
 		return
 	}
+}
+
+// leaderElectionContext returns a context that is canceled when the provided
+// stop channel is closed. Use this to ensure leader election releases the lock
+// promptly on process shutdown.
+func leaderElectionContext(stopCh <-chan struct{}) context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-stopCh
+		cancel()
+	}()
+	return ctx
 }
